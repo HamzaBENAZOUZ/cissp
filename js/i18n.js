@@ -35,6 +35,17 @@ const DICT = {
     "auth.save": "Enregistrer",
     "auth.pwUpdated": "Mot de passe mis à jour.",
 
+    "sec.label": "Choix de la banque de questions",
+    "sec.guide": "Study Guide",
+    "sec.practice": "Practice Tests",
+    "home.subPractice": "{n} questions des Official Practice Tests (4e éd.) : 8 chapitres par domaine et 4 tests blancs complets.",
+    "home.tests": "Tests blancs complets",
+    "home.testsDesc": "Les 4 tests du livre. « Entraînement » corrige chaque question ; « Mode examen » est chronométré avec correction à la fin.",
+    "home.train": "Entraînement",
+    "home.examMode": "Mode examen",
+    "mode.test": "{name} · mode examen",
+    "quiz.scenario": "Mise en situation",
+    "quiz.untranslated": "Traduction française à venir pour cette question.",
     "home.sub": "{n} questions de révision réparties sur {c} chapitres et les 8 domaines du CBK.",
     "home.seen": "questions vues",
     "home.rate": "réussite (dernière réponse)",
@@ -80,7 +91,7 @@ const DICT = {
 
     "mode.exam": "Examen blanc · {n} Q",
     "mode.mistakes": "Revoir mes erreurs",
-    "mode.mistakesCh": "Erreurs · CH_{n}",
+    "mode.mistakesCh": "Erreurs · {n}",
     "mode.domain": "Domaine {d} · {name}",
     "mode.errorsOf": "Erreurs · {label}",
 
@@ -156,6 +167,17 @@ const DICT = {
     "auth.save": "Save",
     "auth.pwUpdated": "Password updated.",
 
+    "sec.label": "Question bank",
+    "sec.guide": "Study Guide",
+    "sec.practice": "Practice Tests",
+    "home.subPractice": "{n} questions from the Official Practice Tests (4th ed.): 8 domain chapters and 4 full practice tests.",
+    "home.tests": "Full practice tests",
+    "home.testsDesc": "The book's 4 tests. \"Practice\" checks each answer; \"Exam mode\" is timed with answers at the end.",
+    "home.train": "Practice",
+    "home.examMode": "Exam mode",
+    "mode.test": "{name} · exam mode",
+    "quiz.scenario": "Scenario",
+    "quiz.untranslated": "French translation coming soon for this question.",
     "home.sub": "{n} review questions across {c} chapters and the 8 CBK domains.",
     "home.seen": "questions seen",
     "home.rate": "success (latest answer)",
@@ -201,7 +223,7 @@ const DICT = {
 
     "mode.exam": "Practice exam · {n} Q",
     "mode.mistakes": "Review my mistakes",
-    "mode.mistakesCh": "Mistakes · CH_{n}",
+    "mode.mistakesCh": "Mistakes · {n}",
     "mode.domain": "Domain {d} · {name}",
     "mode.errorsOf": "Mistakes · {label}",
 

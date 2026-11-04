@@ -12,6 +12,7 @@ const state = {
   attempts: [], latest: new Map(),
   quiz: null, timer: null, lastResult: null,
   view: "boot", authMode: "login",
+  section: (() => { try { return localStorage.getItem("cissp-section") === "practice" ? "practice" : "guide"; } catch { return "guide"; } })(),
 };
 
 // ------------------------------------------------------------------ utils
@@ -27,13 +28,31 @@ const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...
 /** Texte d'une question dans la langue voulue (repli sur l'anglais si pas de traduction). */
 function qText(q, lang = getLang()) {
   if (lang === "fr" && q.question_fr) {
-    return { question: q.question_fr, options: q.options_fr || q.options, explanation: q.explanation_fr || q.explanation, lang: "fr" };
+    return { question: q.question_fr, options: q.options_fr || q.options, explanation: q.explanation_fr || q.explanation,
+      scenario: q.scenario_fr || q.scenario, lang: "fr" };
   }
-  return { question: q.question, options: q.options, explanation: q.explanation, lang: "en" };
+  return { question: q.question, options: q.options, explanation: q.explanation, scenario: q.scenario, lang: "en" };
 }
 const hasFr = q => !!q.question_fr;
 const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
 const chById = id => state.chapters.find(c => c.id === id);
+
+// ---- Sections : « guide » = Study Guide (chapitres 1-21), « practice » = Official Practice Tests (101-112)
+const secOf = chId => (chId > 100 ? "practice" : "guide");
+const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.section);
+const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === state.section);
+const hasPractice = () => state.chapters.some(c => c.id > 100);
+/** Étiquette courte d'un chapitre : CH_07, PT_D3 (practice, domaine 3), TEST_2 (test complet). */
+function chLabel(id) {
+  if (id <= 100) return `CH_${pad(id)}`;
+  const c = chById(id);
+  return c && c.domain ? `PT_D${c.domain}` : `TEST_${id - 108}`;
+}
+function setSection(sec) {
+  state.section = sec;
+  try { localStorage.setItem("cissp-section", sec); } catch { /* ignore */ }
+  renderHome();
+}
 
 function toast(msg, kind = "info") {
   const el = document.createElement("div");
@@ -211,7 +230,7 @@ function chapterStats(chId) {
   const qs = state.questions.filter(q => q.chapter_id === chId);
   let seen = 0, ok = 0;
   for (const q of qs) { const a = state.latest.get(q.id); if (a) { seen++; if (a.is_correct) ok++; } }
-  const atts = state.attempts.filter(a => a.mode === "chapter" && a.chapter_id === chId);
+  const atts = state.attempts.filter(a => (a.mode === "chapter" || a.mode === "exam") && a.chapter_id === chId);
   const best = atts.reduce((m, a) => Math.max(m, pct(a.correct, a.total)), -1);
   return { total: qs.length, seen, ok, attempts: atts.length, best };
 }
@@ -223,34 +242,40 @@ function mistakes(filter = () => true) {
 function renderHome() {
   stopTimer();
   state.view = "home";
-  const total = state.questions.length;
+  if (state.section === "practice" && !hasPractice()) state.section = "guide";
+  const sec = state.section;
+  const inSec = q => secOf(q.chapter_id) === sec;
+  const SQ = secQuestions(), SC = secChapters();
+  const total = SQ.length;
   let seen = 0, ok = 0;
-  for (const a of state.latest.values()) { seen++; if (a.is_correct) ok++; }
-  const mistakeCount = mistakes().length;
-  const mastered = state.chapters.filter(c => chapterStats(c.id).best >= PASS).length;
+  for (const q of SQ) { const a = state.latest.get(q.id); if (a) { seen++; if (a.is_correct) ok++; } }
+  const mistakeCount = mistakes(inSec).length;
+  const mastered = SC.filter(c => chapterStats(c.id).best >= PASS).length;
 
-  const domainBlocks = DOMAIN_IDS.map(d => {
-    const chs = state.chapters.filter(c => c.domain === d);
-    if (!chs.length) return "";
-    const cards = chs.map(c => {
+  const card = c => {
       const s = chapterStats(c.id);
       const best = s.best < 0 ? null : s.best;
       const cls = best === null ? "" : best >= PASS ? "is-pass" : "is-fail";
       const nErr = mistakes(q => q.chapter_id === c.id).length;
       return `
       <article class="chapter-card ${cls}">
-        <button class="chapter-main" data-start-chapter="${c.id}" aria-label="${esc(t("home.launchChapter", { n: c.id }))}">
-          <span class="ch-num mono">CH_${pad(c.id)}</span>
+        <button class="chapter-main" data-start-chapter="${c.id}" aria-label="${esc(t("home.launchChapter", { n: chLabel(c.id) }))}">
+          <span class="ch-num mono">${chLabel(c.id)}</span>
           <span class="ch-title">${esc(chTitle(c))}</span>
           <span class="ch-meta mono">${s.total} Q · ${esc(t("home.attempts", { n: s.attempts }))} · ${esc(best === null ? t("home.never") : t("home.best", { p: best }))}</span>
           <span class="bar"><span style="width:${best ?? 0}%"></span></span>
         </button>
         <div class="ch-actions">
+          ${c.domain ? "" : `<button class="btn btn-ghost btn-xs" data-exam-chapter="${c.id}">${esc(t("home.examMode"))}</button>`}
           <button class="btn btn-ghost btn-xs" data-start-chapter="${c.id}" data-shuffle="1" title="${esc(t("home.shuffleTitle"))}">${esc(t("home.shuffle"))}</button>
           ${nErr ? `<button class="btn btn-ghost btn-xs" data-mistakes-chapter="${c.id}">${esc(t("home.errors", { n: nErr }))}</button>` : ""}
         </div>
       </article>`;
-    }).join("");
+  };
+  const domainBlocks = DOMAIN_IDS.map(d => {
+    const chs = SC.filter(c => c.domain === d);
+    if (!chs.length) return "";
+    const cards = chs.map(card).join("");
     const dq = state.questions.filter(q => chs.some(c => c.id === q.chapter_id)).length;
     return `
     <section class="domain">
@@ -261,17 +286,30 @@ function renderHome() {
       <div class="chapter-grid">${cards}</div>
     </section>`;
   }).join("");
+  const tests = SC.filter(c => !c.domain);
+  const testsBlock = tests.length ? `
+    <section class="domain">
+      <div class="domain-head"><h2><span class="mono accent">TEST</span> ${esc(t("home.tests"))}</h2></div>
+      <p class="muted small">${esc(t("home.testsDesc"))}</p>
+      <div class="chapter-grid">${tests.map(card).join("")}</div>
+    </section>` : "";
+  const tabs = hasPractice() ? `
+    <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
+      ${["guide", "practice"].map(k => `<button class="seg-btn" data-section="${k}" aria-pressed="${k === sec}">${esc(t("sec." + k))}
+        <small class="mono">${state.questions.filter(q => secOf(q.chapter_id) === k).length}</small></button>`).join("")}
+    </div>` : "";
 
   const sizes = [25, 50, 100, 125, 150];
   app.innerHTML = `
   <section class="hero">
     <p class="mono kicker">&gt; root@cissp:~$ ./train --mode=qcm --lang=${getLang()}</p>
     <h1 class="glitch" data-text="CISSP TRAINING TERMINAL">CISSP TRAINING TERMINAL</h1>
-    <p class="muted">${esc(t("home.sub", { n: total, c: state.chapters.length }))}</p>
+    ${tabs}
+    <p class="muted">${esc(sec === "practice" ? t("home.subPractice", { n: total }) : t("home.sub", { n: total, c: SC.length }))}</p>
     <div class="stats">
       <div class="stat"><span class="stat-val mono">${seen}<small>/${total}</small></span><span class="stat-lbl">${esc(t("home.seen"))}</span></div>
       <div class="stat"><span class="stat-val mono">${seen ? pct(ok, seen) : 0}<small>%</small></span><span class="stat-lbl">${esc(t("home.rate"))}</span></div>
-      <div class="stat"><span class="stat-val mono">${mastered}<small>/${state.chapters.length}</small></span><span class="stat-lbl">${esc(t("home.mastered", { p: PASS }))}</span></div>
+      <div class="stat"><span class="stat-val mono">${mastered}<small>/${SC.length}</small></span><span class="stat-lbl">${esc(t("home.mastered", { p: PASS }))}</span></div>
       <div class="stat"><span class="stat-val mono">${state.attempts.length}</span><span class="stat-lbl">${esc(t("home.sessions"))}</span></div>
     </div>
   </section>
@@ -299,29 +337,37 @@ function renderHome() {
     </div>
   </section>
 
-  ${domainBlocks}`;
+  ${domainBlocks}
+  ${testsBlock}`;
+
+  app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => setSection(b.dataset.section));
+  app.querySelectorAll("[data-exam-chapter]").forEach(b => b.onclick = () => {
+    const id = +b.dataset.examChapter;
+    const qs = state.questions.filter(q => q.chapter_id === id);
+    startQuiz({ mode: "exam", chapter_id: id, label: () => t("mode.test", { name: chTitle(chById(id)) }), questions: qs, feedback: false, timed: qs.length * 72 });
+  });
 
   app.querySelectorAll("[data-start-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.startChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);
-    startQuiz({ mode: "chapter", chapter_id: id, label: () => `CH_${pad(id)} · ${chTitle(chById(id))}`, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
+    startQuiz({ mode: "chapter", chapter_id: id, label: () => `${chLabel(id)} · ${chTitle(chById(id))}`, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
   });
   app.querySelectorAll("[data-mistakes-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.mistakesChapter;
-    startQuiz({ mode: "mistakes", chapter_id: id, label: () => t("mode.mistakesCh", { n: pad(id) }), questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: id, label: () => t("mode.mistakesCh", { n: chLabel(id) }), questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
   });
   app.querySelectorAll("[data-start-domain]").forEach(b => b.onclick = () => {
     const d = +b.dataset.startDomain;
-    const ids = state.chapters.filter(c => c.domain === d).map(c => c.id);
+    const ids = SC.filter(c => c.domain === d).map(c => c.id);
     const qs = shuffle(state.questions.filter(q => ids.includes(q.chapter_id))).slice(0, 30);
     startQuiz({ mode: "domain", chapter_id: null, label: () => t("mode.domain", { d, name: t("domain." + d) }), questions: qs, feedback: true });
   });
   document.getElementById("btn-exam").onclick = () => {
     const n = +document.getElementById("exam-size").value;
-    startQuiz({ mode: "exam", chapter_id: null, label: () => t("mode.exam", { n }), questions: shuffle(state.questions).slice(0, n), feedback: false, timed: n * 72 });
+    startQuiz({ mode: "exam", chapter_id: null, label: () => t("mode.exam", { n }), questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * 72 });
   };
   document.getElementById("btn-mistakes").onclick = () => {
-    startQuiz({ mode: "mistakes", chapter_id: null, label: () => t("mode.mistakes"), questions: shuffle(mistakes()), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: null, label: () => t("mode.mistakes"), questions: shuffle(mistakes(inSec)), feedback: true });
   };
   document.getElementById("btn-history").onclick = () => go("history");
 }
@@ -385,7 +431,7 @@ function renderQuiz() {
       <div>
         <p class="mono kicker">${esc(z.label())}</p>
         <p class="mono q-count">Q ${pad(z.i + 1)}<span class="muted">/${pad(z.questions.length)}</span>
-          <span class="muted"> · CH_${pad(q.chapter_id)} #${q.number}</span></p>
+          <span class="muted"> · ${chLabel(q.chapter_id)} #${q.number}</span></p>
       </div>
       <div class="quiz-head-right">
         <span id="timer" class="timer mono">${z.timed ? fmtTime(Math.max(0, z.timed - z.elapsed)) : fmtTime(z.elapsed)}</span>
@@ -399,7 +445,9 @@ function renderQuiz() {
         <p class="q-chapter mono muted">${esc(chTitle(chById(q.chapter_id)))}</p>
         ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}
       </div>
+      ${txt.scenario ? `<div class="scenario"><p class="mono kicker">${esc(t("quiz.scenario"))}</p><p>${esc(txt.scenario)}</p></div>` : ""}
       <h2 class="q-text">${esc(txt.question)}</h2>
+      ${getLang() === "fr" && !z.peek && !hasFr(q) ? `<p class="hint mono">${esc(t("quiz.untranslated"))}</p>` : ""}
       ${q.multi ? `<p class="hint mono">${esc(t("quiz.multi"))}</p>` : ""}
       <ol class="opts">${opts}</ol>
       ${checked ? `
@@ -490,7 +538,8 @@ function renderResults() {
     const txt = qText(d.q);
     return `
     <details class="review ${d.ok ? "ok" : "ko"}" ${d.ok ? "" : "open"} lang="${txt.lang}">
-      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">CH_${pad(d.q.chapter_id)}#${d.q.number}</span> ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
+      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">${chLabel(d.q.chapter_id)}#${d.q.number}</span> ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
+      ${txt.scenario ? `<p class="muted small">${esc(txt.scenario)}</p>` : ""}
       <p class="q-text-sm">${esc(txt.question)}</p>
       <ol class="opts opts-sm">${txt.options.map((o, i) => {
         const L = letter(i); const c = d.q.correct.includes(L); const s = d.picks.includes(L);
@@ -528,12 +577,12 @@ function renderHistory() {
   state.view = "history";
   const rows = state.attempts.map(a => {
     const s = pct(a.correct, a.total);
-    return `<tr><td class="mono">${fmtDate(a.created_at)}</td><td>${esc(t("type." + a.mode))}${a.chapter_id ? ` · CH_${pad(a.chapter_id)}` : ""}</td>
+    return `<tr><td class="mono">${fmtDate(a.created_at)}</td><td>${esc(t("type." + a.mode))}${a.chapter_id ? ` · ${chLabel(a.chapter_id)}` : ""}</td>
       <td class="mono">${a.correct}/${a.total}</td><td class="mono ${s >= PASS ? "accent" : "danger"}">${s}%</td><td class="mono">${fmtTime(a.duration_s || 0)}</td></tr>`;
   }).join("");
   const chRows = state.chapters.map(c => {
     const s = chapterStats(c.id);
-    return `<tr><td class="mono">CH_${pad(c.id)}</td><td>${esc(chTitle(c))}</td><td class="mono">${s.seen}/${s.total}</td>
+    return `<tr><td class="mono">${chLabel(c.id)}</td><td>${esc(chTitle(c))}</td><td class="mono">${s.seen}/${s.total}</td>
       <td class="mono">${s.seen ? pct(s.ok, s.seen) + "%" : "–"}</td><td class="mono">${s.best >= 0 ? s.best + "%" : "–"}</td></tr>`;
   }).join("");
   app.innerHTML = `

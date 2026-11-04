@@ -34,6 +34,46 @@ function qText(q, lang = getLang()) {
   return { question: q.question, options: q.options, explanation: q.explanation, scenario: q.scenario, lang: "en" };
 }
 const hasFr = q => !!q.question_fr;
+
+/* Lecture à voix haute (anglais uniquement) via l'API Web Speech du navigateur. */
+const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+let speakingId = null;
+function stopSpeak() { if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
+function answerSpeech(q) {
+  const en = qText(q, "en");
+  const ans = q.correct.map(L => `${L}: ${en.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
+  return `Correct answer${q.correct.length > 1 ? "s" : ""}. ${ans}. ${en.explanation}`;
+}
+/* Voix préférée : « Microsoft Aria Online (Natural) - English (United States) » (voix neuronale native d'Edge),
+   sinon n'importe quelle voix Aria en-US, puis une voix « Natural » en-US, puis toute voix en-US, puis anglais. */
+function pickVoice() {
+  const vs = speechSynthesis.getVoices();
+  const us = vs.filter(v => /^en[-_]US$/i.test(v.lang));
+  return us.find(v => /\bAria\b/i.test(v.name) && /Natural/i.test(v.name))
+    || us.find(v => /\bAria\b/i.test(v.name))
+    || us.find(v => /Natural|Online/i.test(v.name))
+    || us[0] || vs.find(v => /^en/i.test(v.lang)) || null;
+}
+if (canSpeak) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
+function speakAnswer(q, btn) {
+  if (!canSpeak) return;
+  if (speakingId === q.id) { stopSpeak(); return; }
+  stopSpeak();
+  const u = new SpeechSynthesisUtterance(answerSpeech(q));
+  u.lang = "en-US"; u.rate = 1;
+  const v = pickVoice();
+  if (v) u.voice = v;
+  u.onend = u.onerror = () => { if (speakingId === q.id) { speakingId = null; btn.classList.remove("on"); } };
+  speakingId = q.id; btn.classList.add("on");
+  speechSynthesis.speak(u);
+}
+const speakBtn = q => canSpeak ? `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" lang="${getLang()}" title="${esc(t("quiz.listenTitle"))}">🔊 ${esc(t("quiz.listen"))}</button>` : "";
+function bindSpeak(list) {
+  app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    const q = list.find(x => String(x.id) === b.dataset.speak); if (q) speakAnswer(q, b);
+  });
+}
 const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
 const chById = id => state.chapters.find(c => c.id === id);
 
@@ -156,6 +196,7 @@ async function refreshProgress() {
 }
 
 function route() {
+  stopSpeak();
   if (!state.session || !state.chapters.length) return;
   const h = location.hash.replace(/^#\/?/, "");
   if (state.quiz && h !== "quiz") {
@@ -393,6 +434,7 @@ function startQuiz(opts) {
 }
 
 function renderQuiz() {
+  stopSpeak();
   state.view = "quiz";
   const z = state.quiz;
   const q = z.questions[z.i];
@@ -452,7 +494,7 @@ function renderQuiz() {
       <ol class="opts">${opts}</ol>
       ${checked ? `
       <div class="explain ${isOk ? "ok" : "ko"}">
-        <p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p>
+        <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p>${speakBtn(q)}</div>
         <p>${esc(txt.explanation)}</p>
       </div>` : ""}
     </article>
@@ -470,6 +512,7 @@ function renderQuiz() {
   </section>`;
 
   app.querySelectorAll(".opt").forEach(b => b.onclick = () => toggle(b.dataset.letter));
+  bindSpeak([q]);
   const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
   on("btn-check", check);
   on("btn-next", () => move(1));
@@ -546,6 +589,7 @@ function renderResults() {
         return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
       <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
+      ${speakBtn(d.q)}
     </details>`;
   }).join("");
 
@@ -566,6 +610,7 @@ function renderResults() {
     <h2 class="mono section-title">${esc(t("res.detail"))}</h2>
     ${rows}
   </section>`;
+  bindSpeak(r.details.map(d => d.q));
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-retry").onclick = () => startQuiz({ ...r.opts, questions: r.mode === "chapter" ? r.opts.questions : shuffle(r.opts.questions) });
   const rw = document.getElementById("btn-retry-wrong");

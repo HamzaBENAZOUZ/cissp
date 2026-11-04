@@ -1,5 +1,9 @@
 import { SupabaseStore, LocalStore, latestByQuestion } from "./store.js";
 import { t, getLang, setLang, locale } from "./i18n.js";
+import { offlineEnabled, registerSW, unregisterSW } from "./offline.js";
+
+/** Vrai dans l'application Android (pont vocal AndroidTTS fourni par l'APK). */
+const IN_APP = !!window.AndroidTTS;
 
 const CFG = window.CISSP_CONFIG || {};
 const PASS = CFG.PASS_MARK || 70;
@@ -62,9 +66,11 @@ function qText(q, lang = getLang()) {
 const hasFr = q => !!q.question_fr;
 
 /* Lecture à voix haute (anglais uniquement) via l'API Web Speech du navigateur. */
-const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+// Dans l'application Android, la WebView ne parle pas : on passe par le moteur vocal du téléphone (pont AndroidTTS).
+const nativeTTS = window.AndroidTTS || null;
+const canSpeak = !!nativeTTS || ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
 let speakingId = null;
-function stopSpeak() { if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
+function stopSpeak() { if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
 function answerSpeech(q) {
   const en = qText(q, "en");
   const ans = q.correct.map(L => `${L}: ${en.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
@@ -80,11 +86,17 @@ function pickVoice() {
     || us.find(v => /Natural|Online/i.test(v.name))
     || us[0] || vs.find(v => /^en/i.test(v.lang)) || null;
 }
-if (canSpeak) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
+if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
 function speakAnswer(q, btn) {
   if (!canSpeak) return;
   if (speakingId === q.id) { stopSpeak(); return; }
   stopSpeak();
+  if (nativeTTS) {
+    speakingId = q.id; btn.classList.add("on");
+    window.__ttsDone = () => { if (speakingId === q.id) { speakingId = null; btn.classList.remove("on"); } };
+    nativeTTS.speak(answerSpeech(q));
+    return;
+  }
   const u = new SpeechSynthesisUtterance(answerSpeech(q));
   u.lang = "en-US"; u.rate = 1;
   const v = pickVoice();
@@ -150,7 +162,8 @@ function applyStaticTexts() {
   document.getElementById("footer-keys").textContent = t("footer.keys");
   document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === getLang()));
   const badge = document.getElementById("mode-badge");
-  if (state.store) badge.textContent = state.store.kind === "supabase" ? "SUPABASE" : t("top.local");
+  if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
+  badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
 }
 function rerender() {
   applyStaticTexts();
@@ -178,9 +191,16 @@ async function boot() {
   applyStaticTexts();
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
-    stopTimer(); await state.store.signOut(); state.session = null; state.chapters = []; renderLogin();
+    stopTimer(); await state.store.signOut(); unregisterSW(); state.session = null; state.chapters = []; renderLogin();
   });
   window.addEventListener("hashchange", route);
+  window.addEventListener("online", () => setTimeout(backOnline, 1500));
+  // Dans l'application Android, le code du site est embarqué dans l'APK : pas besoin de service worker.
+  if (IN_APP) unregisterSW();
+  else if (configured && offlineEnabled()) registerSW();
+  window.addEventListener("pagehide", flushSave);
+  window.__flushSave = flushSave;  // appelé par l'application Android quand elle passe en arrière-plan
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
   document.addEventListener("keydown", onKey);
 
   if (configured && /type=recovery/.test(location.hash)) {
@@ -189,6 +209,7 @@ async function boot() {
   }
   state.session = await state.store.session();
   state.store.onAuth(s => {
+    if (s && state.store.offline) backOnline();   // jeton renouvelé : la connexion est revenue
     const was = !!state.session; state.session = s;
     if (s && !was) start();
   });
@@ -207,7 +228,18 @@ async function start() {
     state.questions = questions;
     state.byId = new Map(questions.map(q => [q.id, q]));
     if (!questions.length) throw new Error(t("err.noQuestions"));
+    if (state.store.syncOutbox && !state.store.offline) {   // envoie ce qui a été fait hors ligne la dernière fois
+      const n = await state.store.syncOutbox().catch(() => 0);
+      if (n) toast(t("off.synced", { n }), "ok");
+    }
     await refreshProgress();
+    applyStaticTexts();
+    // Application Android : tout est téléchargé automatiquement pour pouvoir réviser hors ligne.
+    if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
+      state.store.downloadOffline({ chapters, questions })
+        .then(() => { toast(t("off.done", { n: questions.length }), "ok"); if (state.view === "home") renderHome(); })
+        .catch(e => console.error(e));
+    }
     route();
   } catch (e) {
     console.error(e);
@@ -215,10 +247,54 @@ async function start() {
   }
 }
 
+/** La connexion est revenue : envoie ce qui a été fait hors ligne, puis recharge la progression. */
+let goingOnline = false;
+async function backOnline() {
+  if (goingOnline || !state.store || !state.store.offline) return;
+  goingOnline = true;
+  try {
+    const pending = (await state.store.offlineInfo()).pending;
+    if (await state.store.goOnline()) {
+      await refreshProgress();
+      applyStaticTexts();
+      if (state.view === "home" || state.view === "history") rerender();
+      toast(pending ? t("off.synced", { n: pending }) : t("off.online"), "ok");
+    }
+  } catch (e) { console.error(e); }
+  finally { goingOnline = false; }
+}
+
+async function downloadOffline(btn) {
+  btn.disabled = true; btn.textContent = t("off.downloading");
+  try {
+    await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions });
+    const sw = IN_APP || await registerSW();
+    toast(sw ? t("off.done", { n: state.questions.length }) : t("off.doneNoSW"), "ok");
+  } catch (e) { console.error(e); toast(t("off.fail") + (e.message || e), "err"); }
+  renderHome();
+}
+
+async function offlinePanel() {
+  if (state.store.kind !== "supabase") return "";
+  const on = offlineEnabled(), info = on ? await state.store.offlineInfo() : null;
+  const status = !on ? t("off.desc")
+    : t("off.status", { n: info.n, d: info.at ? fmtDate(info.at) : "?" }) + (info.pending ? " " + t("off.pending", { n: info.pending }) : "");
+  return `<section class="panel offline-panel">
+    <div><h3 class="mono">📥 ${esc(t("off.title"))}</h3><p class="muted">${esc(status)}</p></div>
+    <div class="row">${on
+      ? `<button class="btn btn-ghost btn-sm" id="btn-off-dl" ${state.store.offline ? "disabled" : ""}>${esc(t("off.update"))}</button>
+         <button class="btn btn-ghost btn-sm" id="btn-off-rm" ${state.store.offline ? "disabled" : ""}>${esc(t("off.remove"))}</button>`
+      : `<button class="btn btn-primary btn-sm" id="btn-off-dl">${esc(t("off.download"))}</button>`}</div>
+  </section>`;
+}
+
 async function refreshProgress() {
   const [attempts, answers] = await Promise.all([state.store.attempts(), state.store.answers()]);
   state.attempts = attempts;
   state.latest = latestByQuestion(answers);
+  try { state.flags = new Set(await state.store.flags()); }
+  catch (e) { console.warn("flags", e); state.flags = state.flags || new Set(); }
+  await refreshSaved();
 }
 
 function route() {
@@ -226,7 +302,7 @@ function route() {
   if (!state.session || !state.chapters.length) return;
   const h = location.hash.replace(/^#\/?/, "");
   if (state.quiz && h !== "quiz") {
-    if (state.quiz.saveId) saveQuiz(true);  // quiz déjà sauvegardé : on garde l'état à jour, pas besoin de confirmer
+    if (state.quiz.saveId) { saveQuiz(true); flushSave(); }  // quiz déjà sauvegardé : on enregistre tout de suite, pas besoin de confirmer
     else if (!confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
     stopTimer(); state.quiz = null;
   }
@@ -302,6 +378,35 @@ function chapterStats(chId) {
   const best = atts.reduce((m, a) => Math.max(m, pct(a.correct, a.total)), -1);
   return { total: qs.length, seen, ok, attempts: atts.length, best };
 }
+// ---- Questions marquées « à réviser » (bouton 🔖, même bouton pour démarquer)
+const isFlagged = q => !!(state.flags && state.flags.has(q.id));
+const flagged = (filter = () => true) => state.questions.filter(q => filter(q) && isFlagged(q));
+const flagBtn = q => `<button class="btn btn-ghost btn-xs btn-flag${isFlagged(q) ? " on" : ""}" data-flag="${q.id}" aria-pressed="${isFlagged(q)}"
+  title="${esc(t("flag.title"))}">🔖 ${esc(isFlagged(q) ? t("flag.on") : t("flag.off"))}</button>`;
+async function toggleFlag(qid) {
+  const q = state.byId.get(qid); if (!q) return;
+  state.flags = state.flags || new Set();
+  const on = !state.flags.has(qid);
+  on ? state.flags.add(qid) : state.flags.delete(qid);
+  paintFlags(qid);
+  try { await state.store.setFlag(qid, on); toast(on ? t("flag.added") : t("flag.removed"), "info"); }
+  catch (e) {
+    console.error(e);
+    on ? state.flags.delete(qid) : state.flags.add(qid); paintFlags(qid);
+    toast(t("flag.fail"), "err");
+  }
+}
+function paintFlags(qid) {
+  const q = state.byId.get(qid);
+  app.querySelectorAll(`[data-flag="${qid}"]`).forEach(b => { b.outerHTML = flagBtn(q); });
+  bindFlags();
+}
+function bindFlags() {
+  app.querySelectorAll("[data-flag]").forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation(); toggleFlag(Number(b.dataset.flag));
+  });
+}
+
 function mistakes(filter = () => true) {
   return state.questions.filter(q => filter(q) && state.latest.has(q.id) && !state.latest.get(q.id).is_correct);
 }
@@ -334,6 +439,7 @@ function renderHome() {
   let seen = 0, ok = 0;
   for (const q of SQ) { const a = state.latest.get(q.id); if (a) { seen++; if (a.is_correct) ok++; } }
   const mistakeCount = mistakes(inSec).length;
+  const flagCount = flagged(inSec).length;
   const mastered = SC.filter(c => chapterStats(c.id).best >= PASS).length;
 
   const card = c => {
@@ -416,11 +522,17 @@ function renderHome() {
       <button class="btn ${mistakeCount ? "btn-danger" : "btn-ghost"}" id="btn-mistakes" ${mistakeCount ? "" : "disabled"}>${esc(t("home.toReview", { n: mistakeCount }))}</button>
     </div>
     <div class="action">
+      <h3 class="mono">${esc(t("home.flagged"))}</h3>
+      <p class="muted">${esc(t("home.flaggedDesc"))}</p>
+      <button class="btn ${flagCount ? "btn-flagged" : "btn-ghost"}" id="btn-flagged" ${flagCount ? "" : "disabled"}>🔖 ${esc(t("home.flaggedN", { n: flagCount }))}</button>
+    </div>
+    <div class="action">
       <h3 class="mono">${esc(t("home.history"))}</h3>
       <p class="muted">${esc(t("home.historyDesc"))}</p>
       <button class="btn btn-ghost" id="btn-history">${esc(t("home.seeHistory"))}</button>
     </div>
   </section>
+  <div id="offline-slot"></div>
 
   ${domainBlocks}
   ${testsBlock}`;
@@ -458,7 +570,21 @@ function renderHome() {
   document.getElementById("btn-mistakes").onclick = () => {
     startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "mistakes" }, questions: shuffle(mistakes(inSec)), feedback: true });
   };
+  document.getElementById("btn-flagged").onclick = () => {
+    startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "flagged" }, questions: shuffle(flagged(inSec)), feedback: true });
+  };
   document.getElementById("btn-history").onclick = () => go("history");
+  offlinePanel().then(html => {
+    const slot = document.getElementById("offline-slot");
+    if (!slot || !html) return;
+    slot.innerHTML = html;
+    const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
+    if (dl) dl.onclick = () => downloadOffline(dl);
+    if (rm) rm.onclick = async () => {
+      if (!confirm(t("off.removeConfirm"))) return;
+      await state.store.clearOffline(); await unregisterSW(); toast(t("off.removed"), "info"); renderHome();
+    };
+  });
 }
 
 // ------------------------------------------------------------------ quiz
@@ -472,18 +598,37 @@ function labelOf(lab) {
     case "domain": return t("mode.domain", { d: lab.d, name: t("domain." + lab.d) });
     case "exam": return t("mode.exam", { n: lab.n });
     case "mistakes": return t("mode.mistakes");
+    case "flagged": return t("mode.flagged");
     case "errorsOf": return t("mode.errorsOf", { label: labelOf(lab.of) });
     default: return "";
   }
 }
 
-// ---- Quiz sauvegardés (reprise plus tard) : stockés dans le navigateur, par utilisateur.
+// ---- Quiz sauvegardés (reprise plus tard) : dans Supabase (table saved_quizzes), donc sur tous les
+// appareils du compte ; en mode local, dans le navigateur. state.saved en garde une copie en mémoire.
 const SAVE_MAX = 10;
-const saveKey = () => "cissp-saved-quizzes:" + ((state.session && state.session.user && (state.session.user.id || state.session.user.email)) || "local");
-function loadSaved() { try { return JSON.parse(localStorage.getItem(saveKey())) || []; } catch { return []; } }
-function writeSaved(list) { try { localStorage.setItem(saveKey(), JSON.stringify(list.slice(0, SAVE_MAX))); return true; } catch { return false; } }
-function dropSaved(id) { if (id) writeSaved(loadSaved().filter(x => x.id !== id)); }
-function saveQuiz(silent = false) {
+const loadSaved = () => state.saved || [];
+async function refreshSaved() {
+  try { state.saved = (await state.store.listSaved()).slice(0, 20); state.savedErr = null; }
+  catch (e) { console.error(e); state.saved = []; state.savedErr = e; }
+}
+function dropSaved(id) {
+  if (!id) return Promise.resolve();
+  state.saved = loadSaved().filter(x => x.id !== id);
+  return state.store.deleteSaved(id).catch(e => console.error(e));
+}
+let saveTimer = null, savePending = null;
+async function pushSaved(entry) {
+  savePending = null;
+  try {
+    await state.store.putSaved(entry);
+    // Au-delà de SAVE_MAX, on supprime les plus anciennes.
+    loadSaved().slice(SAVE_MAX).forEach(x => dropSaved(x.id));
+    return true;
+  } catch (e) { console.error(e); return false; }
+}
+function flushSave() { clearTimeout(saveTimer); if (savePending) pushSaved(savePending); }
+async function saveQuiz(silent = false) {
   const z = state.quiz; if (!z) return;
   if (!z.saveId) z.saveId = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const entry = {
@@ -492,8 +637,14 @@ function saveQuiz(silent = false) {
     qids: z.questions.map(q => q.id), picks: z.picks, checked: z.checked,
     section: secOf(z.questions[0].chapter_id),
   };
-  const ok = writeSaved([entry, ...loadSaved().filter(x => x.id !== entry.id)]);
-  if (!silent) toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
+  state.saved = [entry, ...loadSaved().filter(x => x.id !== entry.id)];
+  if (silent) {  // sauvegarde automatique : regroupée (au plus une écriture toutes les 1,5 s)
+    savePending = entry; clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 1500);
+    return;
+  }
+  clearTimeout(saveTimer);
+  const ok = await pushSaved(entry);
+  toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
 }
 // Après une première sauvegarde manuelle, chaque réponse met à jour la sauvegarde automatiquement.
 const autoSave = () => { if (state.quiz && state.quiz.saveId) saveQuiz(true); };
@@ -583,7 +734,8 @@ function renderQuiz() {
     <article class="panel question-panel" lang="${txt.lang}">
       <div class="q-top">
         <p class="q-chapter mono muted">${esc(chTitle(chById(q.chapter_id)))}</p>
-        ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}
+        <div class="q-tools">${flagBtn(q)}
+        ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}</div>
       </div>
       ${txt.scenario ? `<div class="scenario"><p class="mono kicker">${esc(t("quiz.scenario"))}</p><p>${esc(txt.scenario)}</p></div>` : ""}
       <h2 class="q-text">${esc(txt.question)}</h2>
@@ -616,6 +768,7 @@ function renderQuiz() {
   on("btn-next", () => move(1));
   on("btn-prev", () => move(-1));
   on("btn-peek", () => { z.peek = !z.peek; renderQuiz(); });
+  bindFlags();
   on("btn-finish", () => {
     const left = z.questions.length - answered;
     if (!z.feedback && left > 0 && !confirm(t("quiz.unanswered", { n: left }))) return;
@@ -659,7 +812,8 @@ async function finishQuiz() {
   const duration = Math.floor((Date.now() - z.startedAt) / 1000);
   state.lastResult = { label: z.label, mode: z.mode, chapter_id: z.chapter_id, details, correct, total: details.length, duration, saved: false, opts: z };
   state.quiz = null;
-  dropSaved(z.saveId);  // quiz terminé : la sauvegarde de reprise n'a plus lieu d'être
+  clearTimeout(saveTimer); savePending = null;
+  await dropSaved(z.saveId);  // quiz terminé : la sauvegarde de reprise n'a plus lieu d'être
   // On n'enregistre que les questions répondues (sauf examen : toutes comptent).
   const toSave = details.filter(d => z.mode === "exam" || d.picks.length);
   try {
@@ -691,7 +845,7 @@ function renderResults() {
         return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
       <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
-      ${speakBtn(d.q)}
+      <div class="review-tools">${speakBtn(d.q)} ${flagBtn(d.q)}</div>
     </details>`;
   }).join("");
 
@@ -713,6 +867,7 @@ function renderResults() {
     ${rows}
   </section>`;
   bindSpeak(r.details.map(d => d.q));
+  bindFlags();
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-retry").onclick = () => startQuiz({ ...r.opts, questions: r.mode === "chapter" ? r.opts.questions : shuffle(r.opts.questions) });
   const rw = document.getElementById("btn-retry-wrong");
@@ -755,6 +910,7 @@ function onKey(e) {
   if (e.target.matches("input, select, textarea") || e.ctrlKey || e.metaKey || e.altKey) return;
   const k = e.key.toUpperCase();
   if (/^[A-K]$/.test(k)) { e.preventDefault(); toggle(k); return; }
+  if (k === "M") { e.preventDefault(); toggleFlag(state.quiz.questions[state.quiz.i].id); return; }
   if (e.key === "Enter") {
     e.preventDefault();
     const btn = document.getElementById("btn-check") || document.getElementById("btn-next") || document.getElementById("btn-finish");

@@ -1,17 +1,9 @@
 import { SupabaseStore, LocalStore, latestByQuestion } from "./store.js";
+import { t, getLang, setLang, locale } from "./i18n.js";
 
 const CFG = window.CISSP_CONFIG || {};
 const PASS = CFG.PASS_MARK || 70;
-const DOMAINS = {
-  1: "Sécurité et gestion des risques",
-  2: "Sécurité des actifs",
-  3: "Architecture et ingénierie de la sécurité",
-  4: "Sécurité des communications et des réseaux",
-  5: "Gestion des identités et des accès (IAM)",
-  6: "Évaluation et tests de sécurité",
-  7: "Opérations de sécurité",
-  8: "Sécurité du développement logiciel",
-};
+const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 const app = document.getElementById("app");
 const state = {
@@ -19,6 +11,7 @@ const state = {
   chapters: [], questions: [], byId: new Map(),
   attempts: [], latest: new Map(),
   quiz: null, timer: null, lastResult: null,
+  view: "boot", authMode: "login",
 };
 
 // ------------------------------------------------------------------ utils
@@ -27,27 +20,77 @@ const pad = n => String(n).padStart(2, "0");
 const letter = i => String.fromCharCode(65 + i);
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 const fmtTime = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
-const fmtDate = d => new Date(d).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+const fmtDate = d => new Date(d).toLocaleString(locale(), { dateStyle: "short", timeStyle: "short" });
 function shuffle(a) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
+/** Texte d'une question dans la langue voulue (repli sur l'anglais si pas de traduction). */
+function qText(q, lang = getLang()) {
+  if (lang === "fr" && q.question_fr) {
+    return { question: q.question_fr, options: q.options_fr || q.options, explanation: q.explanation_fr || q.explanation, lang: "fr" };
+  }
+  return { question: q.question, options: q.options, explanation: q.explanation, lang: "en" };
+}
+const hasFr = q => !!q.question_fr;
+const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
+const chById = id => state.chapters.find(c => c.id === id);
+
 function toast(msg, kind = "info") {
-  const t = document.createElement("div");
-  t.className = `toast toast-${kind}`;
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.classList.add("show"), 10);
-  setTimeout(() => { t.classList.remove("show"); setTimeout(() => t.remove(), 300); }, 3800);
+  const el = document.createElement("div");
+  el.className = `toast toast-${kind}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.classList.add("show"), 10);
+  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 3800);
 }
 function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+function errorPanel(title, msg, hint) {
+  app.innerHTML = `<section class="panel error-panel"><h2 class="mono">${esc(title)}</h2><p>${esc(msg)}</p>
+    ${hint ? `<p class="muted">${esc(hint)}</p>` : ""}</section>`;
+}
+
+// ------------------------------------------------------------------ theme & language
+function currentTheme() { return document.documentElement.dataset.theme === "light" ? "light" : "dark"; }
+function setTheme(th) {
+  document.documentElement.dataset.theme = th;
+  try { localStorage.setItem("cissp-theme", th); } catch { /* ignore */ }
+  const b = document.getElementById("btn-theme");
+  if (b) b.setAttribute("aria-pressed", th === "light");
+}
+function applyStaticTexts() {
+  document.getElementById("btn-logout").textContent = t("top.logout");
+  document.getElementById("btn-theme").title = t("top.theme");
+  document.getElementById("btn-theme").setAttribute("aria-label", t("top.theme"));
+  document.getElementById("footer-src").textContent = t("footer.src");
+  document.getElementById("footer-keys").textContent = t("footer.keys");
+  document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === getLang()));
+  const badge = document.getElementById("mode-badge");
+  if (state.store) badge.textContent = state.store.kind === "supabase" ? "SUPABASE" : t("top.local");
+}
+function rerender() {
+  applyStaticTexts();
+  if (state.view === "login") return renderLogin(state.authMode);
+  if (state.view === "quiz" && state.quiz) return renderQuiz();
+  if (state.view === "results" && state.lastResult) return renderResults();
+  if (state.view === "history") return renderHistory();
+  if (state.view === "home") return renderHome();
+}
 
 // ------------------------------------------------------------------ boot
 async function boot() {
-  const useSupabase = CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase;
-  state.store = useSupabase ? new SupabaseStore(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : new LocalStore(CFG.LOCAL_DATA);
+  setTheme(currentTheme());
+  document.getElementById("btn-theme").addEventListener("click", () => setTheme(currentTheme() === "light" ? "dark" : "light"));
+  document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); rerender(); }));
+  applyStaticTexts();
+
+  const configured = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
+  if (configured && !window.supabase) return errorPanel(t("err.title"), t("err.cdn"), t("err.cdnHint"));
+  if (!configured && location.hostname.endsWith("github.io")) return errorPanel(t("err.cfgTitle"), t("err.cfg"), t("err.cfgHint"));
+
+  state.store = configured ? new SupabaseStore(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : new LocalStore(CFG.LOCAL_DATA);
   const badge = document.getElementById("mode-badge");
-  badge.textContent = useSupabase ? "SUPABASE" : "MODE LOCAL";
-  badge.classList.add(useSupabase ? "badge-ok" : "badge-warn");
+  badge.classList.add(configured ? "badge-ok" : "badge-warn");
+  applyStaticTexts();
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
     stopTimer(); await state.store.signOut(); state.session = null; state.chapters = []; renderLogin();
@@ -55,7 +98,7 @@ async function boot() {
   window.addEventListener("hashchange", route);
   document.addEventListener("keydown", onKey);
 
-  if (useSupabase && /type=recovery/.test(location.hash)) {
+  if (configured && /type=recovery/.test(location.hash)) {
     state.store.onAuth(s => { if (s) { state.session = s; renderNewPassword(); } });
     return;
   }
@@ -69,22 +112,21 @@ async function boot() {
 }
 
 async function start() {
-  const u = document.getElementById("user-label");
-  u.textContent = state.session?.user?.email || "";
+  document.getElementById("user-label").textContent = state.session?.user?.email || "";
   document.getElementById("btn-logout").hidden = state.store.kind === "local";
-  app.innerHTML = `<div class="boot"><p class="mono">&gt; déchiffrement de la base de questions<span class="cursor">_</span></p></div>`;
+  state.view = "boot";
+  app.innerHTML = `<div class="boot"><p class="mono">&gt; ${esc(t("boot.load"))}<span class="cursor">_</span></p></div>`;
   try {
     const { chapters, questions } = await state.store.loadContent();
     state.chapters = chapters;
     state.questions = questions;
     state.byId = new Map(questions.map(q => [q.id, q]));
-    if (!questions.length) throw new Error("Aucune question trouvée. Avez-vous exécuté private/seed_questions.sql dans Supabase ?");
+    if (!questions.length) throw new Error(t("err.noQuestions"));
     await refreshProgress();
     route();
   } catch (e) {
     console.error(e);
-    app.innerHTML = `<section class="panel error-panel"><h2 class="mono">// ERREUR</h2><p>${esc(e.message || e)}</p>
-      <p class="muted">Voir le README, section « Dépannage ».</p></section>`;
+    errorPanel(t("err.title"), e.message || String(e), t("err.seeReadme"));
   }
 }
 
@@ -97,7 +139,10 @@ async function refreshProgress() {
 function route() {
   if (!state.session || !state.chapters.length) return;
   const h = location.hash.replace(/^#\/?/, "");
-  if (state.quiz && h !== "quiz") { if (!confirm("Quitter le quiz en cours ? Les réponses ne seront pas enregistrées.")) { history.replaceState(null, "", "#/quiz"); return; } stopTimer(); state.quiz = null; }
+  if (state.quiz && h !== "quiz") {
+    if (!confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
+    stopTimer(); state.quiz = null;
+  }
   if (h === "quiz" && state.quiz) return renderQuiz();
   if (h === "results" && state.lastResult) return renderResults();
   if (h === "history") return renderHistory();
@@ -107,22 +152,23 @@ const go = h => { if (location.hash === `#/${h}`) route(); else location.hash = 
 
 // ------------------------------------------------------------------ auth views
 function renderLogin(mode = "login") {
+  state.view = "login"; state.authMode = mode;
   document.getElementById("user-label").textContent = "";
   document.getElementById("btn-logout").hidden = true;
   const signup = mode === "signup";
   app.innerHTML = `
   <section class="auth panel">
-    <p class="mono kicker">&gt; authentification requise</p>
+    <p class="mono kicker">&gt; ${esc(t("auth.required"))}</p>
     <h1 class="glitch" data-text="ACCESS CONTROL">ACCESS CONTROL</h1>
-    <p class="muted">${signup ? "Créez votre compte pour sauvegarder votre progression." : "Connectez-vous pour accéder aux 420 questions et à votre progression."}</p>
+    <p class="muted">${esc(signup ? t("auth.introSignup") : t("auth.introLogin"))}</p>
     <form id="auth-form" class="form">
-      <label>Email<input type="email" name="email" autocomplete="email" required></label>
-      <label>Mot de passe<input type="password" name="password" minlength="8" autocomplete="${signup ? "new-password" : "current-password"}" required></label>
-      <button class="btn btn-primary" type="submit">${signup ? "Créer le compte" : "Se connecter"}</button>
+      <label>${esc(t("auth.email"))}<input type="email" name="email" autocomplete="email" required></label>
+      <label>${esc(t("auth.password"))}<input type="password" name="password" minlength="8" autocomplete="${signup ? "new-password" : "current-password"}" required></label>
+      <button class="btn btn-primary" type="submit">${esc(signup ? t("auth.create") : t("auth.login"))}</button>
     </form>
     <div class="auth-links">
-      <a href="#" id="auth-toggle">${signup ? "J'ai déjà un compte" : "Créer un compte"}</a>
-      ${signup ? "" : `<a href="#" id="auth-reset">Mot de passe oublié</a>`}
+      <a href="#" id="auth-toggle">${esc(signup ? t("auth.haveAccount") : t("auth.createAccount"))}</a>
+      ${signup ? "" : `<a href="#" id="auth-reset">${esc(t("auth.forgot"))}</a>`}
     </div>
   </section>`;
   document.getElementById("auth-toggle").onclick = e => { e.preventDefault(); renderLogin(signup ? "login" : "signup"); };
@@ -130,8 +176,8 @@ function renderLogin(mode = "login") {
   if (r) r.onclick = async e => {
     e.preventDefault();
     const email = app.querySelector("input[name=email]").value.trim();
-    if (!email) return toast("Saisissez d'abord votre email.", "warn");
-    try { await state.store.resetPassword(email); toast("Email de réinitialisation envoyé.", "ok"); } catch (err) { toast(err.message, "err"); }
+    if (!email) return toast(t("auth.emailFirst"), "warn");
+    try { await state.store.resetPassword(email); toast(t("auth.resetSent"), "ok"); } catch (err) { toast(err.message, "err"); }
   };
   document.getElementById("auth-form").onsubmit = async e => {
     e.preventDefault();
@@ -139,8 +185,8 @@ function renderLogin(mode = "login") {
     const btn = e.target.querySelector("button"); btn.disabled = true;
     try {
       if (signup) {
-        const r = await state.store.signUp(fd.get("email"), fd.get("password"));
-        if (r === "check-email") { toast("Compte créé : confirmez via le lien reçu par email.", "ok"); renderLogin("login"); }
+        const res = await state.store.signUp(fd.get("email"), fd.get("password"));
+        if (res === "check-email") { toast(t("auth.checkEmail"), "ok"); renderLogin("login"); }
       } else {
         await state.store.signIn(fd.get("email"), fd.get("password"));
       }
@@ -149,12 +195,13 @@ function renderLogin(mode = "login") {
 }
 
 function renderNewPassword() {
-  app.innerHTML = `<section class="auth panel"><h1 class="mono">Nouveau mot de passe</h1>
-    <form id="np" class="form"><label>Mot de passe<input type="password" name="p" minlength="8" required autocomplete="new-password"></label>
-    <button class="btn btn-primary">Enregistrer</button></form></section>`;
+  state.view = "newpw";
+  app.innerHTML = `<section class="auth panel"><h1 class="mono">${esc(t("auth.newPassword"))}</h1>
+    <form id="np" class="form"><label>${esc(t("auth.password"))}<input type="password" name="p" minlength="8" required autocomplete="new-password"></label>
+    <button class="btn btn-primary">${esc(t("auth.save"))}</button></form></section>`;
   document.getElementById("np").onsubmit = async e => {
     e.preventDefault();
-    try { await state.store.updatePassword(new FormData(e.target).get("p")); toast("Mot de passe mis à jour.", "ok"); history.replaceState(null, "", location.pathname); start(); }
+    try { await state.store.updatePassword(new FormData(e.target).get("p")); toast(t("auth.pwUpdated"), "ok"); history.replaceState(null, "", location.pathname); start(); }
     catch (err) { toast(err.message, "err"); }
   };
 }
@@ -175,30 +222,32 @@ function mistakes(filter = () => true) {
 // ------------------------------------------------------------------ home
 function renderHome() {
   stopTimer();
+  state.view = "home";
   const total = state.questions.length;
   let seen = 0, ok = 0;
   for (const a of state.latest.values()) { seen++; if (a.is_correct) ok++; }
   const mistakeCount = mistakes().length;
   const mastered = state.chapters.filter(c => chapterStats(c.id).best >= PASS).length;
 
-  const domainBlocks = Object.entries(DOMAINS).map(([d, name]) => {
-    const chs = state.chapters.filter(c => c.domain === +d);
+  const domainBlocks = DOMAIN_IDS.map(d => {
+    const chs = state.chapters.filter(c => c.domain === d);
     if (!chs.length) return "";
     const cards = chs.map(c => {
       const s = chapterStats(c.id);
       const best = s.best < 0 ? null : s.best;
       const cls = best === null ? "" : best >= PASS ? "is-pass" : "is-fail";
+      const nErr = mistakes(q => q.chapter_id === c.id).length;
       return `
       <article class="chapter-card ${cls}">
-        <button class="chapter-main" data-start-chapter="${c.id}" aria-label="Lancer le quiz du chapitre ${c.id}">
+        <button class="chapter-main" data-start-chapter="${c.id}" aria-label="${esc(t("home.launchChapter", { n: c.id }))}">
           <span class="ch-num mono">CH_${pad(c.id)}</span>
-          <span class="ch-title">${esc(c.title)}</span>
-          <span class="ch-meta mono">${s.total} Q · ${s.attempts} essai${s.attempts > 1 ? "s" : ""} · ${best === null ? "jamais fait" : `meilleur ${best}%`}</span>
+          <span class="ch-title">${esc(chTitle(c))}</span>
+          <span class="ch-meta mono">${s.total} Q · ${esc(t("home.attempts", { n: s.attempts }))} · ${esc(best === null ? t("home.never") : t("home.best", { p: best }))}</span>
           <span class="bar"><span style="width:${best ?? 0}%"></span></span>
         </button>
         <div class="ch-actions">
-          <button class="btn btn-ghost btn-xs" data-start-chapter="${c.id}" data-shuffle="1" title="Questions dans le désordre">Mélanger</button>
-          ${mistakes(q => q.chapter_id === c.id).length ? `<button class="btn btn-ghost btn-xs" data-mistakes-chapter="${c.id}">Erreurs (${mistakes(q => q.chapter_id === c.id).length})</button>` : ""}
+          <button class="btn btn-ghost btn-xs" data-start-chapter="${c.id}" data-shuffle="1" title="${esc(t("home.shuffleTitle"))}">${esc(t("home.shuffle"))}</button>
+          ${nErr ? `<button class="btn btn-ghost btn-xs" data-mistakes-chapter="${c.id}">${esc(t("home.errors", { n: nErr }))}</button>` : ""}
         </div>
       </article>`;
     }).join("");
@@ -206,48 +255,47 @@ function renderHome() {
     return `
     <section class="domain">
       <div class="domain-head">
-        <h2><span class="mono accent">D${d}</span> ${esc(name)}</h2>
-        <button class="btn btn-ghost btn-sm" data-start-domain="${d}">Quiz domaine (${Math.min(dq, 30)} Q)</button>
+        <h2><span class="mono accent">D${d}</span> ${esc(t("domain." + d))}</h2>
+        <button class="btn btn-ghost btn-sm" data-start-domain="${d}">${esc(t("home.domainQuiz", { n: Math.min(dq, 30) }))}</button>
       </div>
       <div class="chapter-grid">${cards}</div>
     </section>`;
   }).join("");
 
+  const sizes = [25, 50, 100, 125, 150];
   app.innerHTML = `
   <section class="hero">
-    <p class="mono kicker">&gt; root@cissp:~$ ./train --mode=qcm</p>
+    <p class="mono kicker">&gt; root@cissp:~$ ./train --mode=qcm --lang=${getLang()}</p>
     <h1 class="glitch" data-text="CISSP TRAINING TERMINAL">CISSP TRAINING TERMINAL</h1>
-    <p class="muted">${total} questions de révision réparties sur ${state.chapters.length} chapitres et les 8 domaines du CBK.</p>
+    <p class="muted">${esc(t("home.sub", { n: total, c: state.chapters.length }))}</p>
     <div class="stats">
-      <div class="stat"><span class="stat-val mono">${seen}<small>/${total}</small></span><span class="stat-lbl">questions vues</span></div>
-      <div class="stat"><span class="stat-val mono">${seen ? pct(ok, seen) : 0}<small>%</small></span><span class="stat-lbl">réussite (dernière réponse)</span></div>
-      <div class="stat"><span class="stat-val mono">${mastered}<small>/${state.chapters.length}</small></span><span class="stat-lbl">chapitres ≥ ${PASS}%</span></div>
-      <div class="stat"><span class="stat-val mono">${state.attempts.length}</span><span class="stat-lbl">sessions</span></div>
+      <div class="stat"><span class="stat-val mono">${seen}<small>/${total}</small></span><span class="stat-lbl">${esc(t("home.seen"))}</span></div>
+      <div class="stat"><span class="stat-val mono">${seen ? pct(ok, seen) : 0}<small>%</small></span><span class="stat-lbl">${esc(t("home.rate"))}</span></div>
+      <div class="stat"><span class="stat-val mono">${mastered}<small>/${state.chapters.length}</small></span><span class="stat-lbl">${esc(t("home.mastered", { p: PASS }))}</span></div>
+      <div class="stat"><span class="stat-val mono">${state.attempts.length}</span><span class="stat-lbl">${esc(t("home.sessions"))}</span></div>
     </div>
   </section>
 
   <section class="panel actions-panel">
     <div class="action">
-      <h3 class="mono">// EXAMEN BLANC</h3>
-      <p class="muted">Questions tirées au hasard dans tous les chapitres, chronométrées, correction à la fin.</p>
+      <h3 class="mono">${esc(t("home.exam"))}</h3>
+      <p class="muted">${esc(t("home.examDesc"))}</p>
       <div class="row">
-        <select id="exam-size" aria-label="Nombre de questions">
-          <option value="25">25 questions</option><option value="50">50 questions</option>
-          <option value="100" selected>100 questions</option><option value="125">125 questions</option>
-          <option value="150">150 questions</option>
+        <select id="exam-size" aria-label="${esc(t("home.nQuestions", { n: "" }))}">
+          ${sizes.map(n => `<option value="${n}" ${n === 100 ? "selected" : ""}>${esc(t("home.nQuestions", { n }))}</option>`).join("")}
         </select>
-        <button class="btn btn-primary" id="btn-exam">Lancer</button>
+        <button class="btn btn-primary" id="btn-exam">${esc(t("home.start"))}</button>
       </div>
     </div>
     <div class="action">
-      <h3 class="mono">// REVOIR MES ERREURS</h3>
-      <p class="muted">Les questions dont votre dernière réponse était fausse.</p>
-      <button class="btn ${mistakeCount ? "btn-danger" : "btn-ghost"}" id="btn-mistakes" ${mistakeCount ? "" : "disabled"}>${mistakeCount} question${mistakeCount > 1 ? "s" : ""} à revoir</button>
+      <h3 class="mono">${esc(t("home.mistakes"))}</h3>
+      <p class="muted">${esc(t("home.mistakesDesc"))}</p>
+      <button class="btn ${mistakeCount ? "btn-danger" : "btn-ghost"}" id="btn-mistakes" ${mistakeCount ? "" : "disabled"}>${esc(t("home.toReview", { n: mistakeCount }))}</button>
     </div>
     <div class="action">
-      <h3 class="mono">// HISTORIQUE</h3>
-      <p class="muted">Toutes vos sessions et vos scores.</p>
-      <button class="btn btn-ghost" id="btn-history">Voir l'historique</button>
+      <h3 class="mono">${esc(t("home.history"))}</h3>
+      <p class="muted">${esc(t("home.historyDesc"))}</p>
+      <button class="btn btn-ghost" id="btn-history">${esc(t("home.seeHistory"))}</button>
     </div>
   </section>
 
@@ -256,32 +304,32 @@ function renderHome() {
   app.querySelectorAll("[data-start-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.startChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);
-    startQuiz({ mode: "chapter", chapter_id: id, label: `CH_${pad(id)} · ${state.chapters.find(c => c.id === id).title}`, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
+    startQuiz({ mode: "chapter", chapter_id: id, label: () => `CH_${pad(id)} · ${chTitle(chById(id))}`, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
   });
   app.querySelectorAll("[data-mistakes-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.mistakesChapter;
-    startQuiz({ mode: "mistakes", chapter_id: id, label: `Erreurs · CH_${pad(id)}`, questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: id, label: () => t("mode.mistakesCh", { n: pad(id) }), questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
   });
   app.querySelectorAll("[data-start-domain]").forEach(b => b.onclick = () => {
     const d = +b.dataset.startDomain;
     const ids = state.chapters.filter(c => c.domain === d).map(c => c.id);
     const qs = shuffle(state.questions.filter(q => ids.includes(q.chapter_id))).slice(0, 30);
-    startQuiz({ mode: "domain", chapter_id: null, label: `Domaine ${d} · ${DOMAINS[d]}`, questions: qs, feedback: true });
+    startQuiz({ mode: "domain", chapter_id: null, label: () => t("mode.domain", { d, name: t("domain." + d) }), questions: qs, feedback: true });
   });
   document.getElementById("btn-exam").onclick = () => {
     const n = +document.getElementById("exam-size").value;
-    startQuiz({ mode: "exam", chapter_id: null, label: `Examen blanc · ${n} Q`, questions: shuffle(state.questions).slice(0, n), feedback: false, timed: n * 72 });
+    startQuiz({ mode: "exam", chapter_id: null, label: () => t("mode.exam", { n }), questions: shuffle(state.questions).slice(0, n), feedback: false, timed: n * 72 });
   };
   document.getElementById("btn-mistakes").onclick = () => {
-    startQuiz({ mode: "mistakes", chapter_id: null, label: "Revoir mes erreurs", questions: shuffle(mistakes()), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: null, label: () => t("mode.mistakes"), questions: shuffle(mistakes()), feedback: true });
   };
   document.getElementById("btn-history").onclick = () => go("history");
 }
 
 // ------------------------------------------------------------------ quiz
 function startQuiz(opts) {
-  if (!opts.questions.length) return toast("Aucune question disponible.", "warn");
-  state.quiz = { ...opts, i: 0, picks: opts.questions.map(() => []), checked: opts.questions.map(() => false), startedAt: Date.now(), elapsed: 0 };
+  if (!opts.questions.length) return toast(t("quiz.none"), "warn");
+  state.quiz = { ...opts, i: 0, peek: false, picks: opts.questions.map(() => []), checked: opts.questions.map(() => false), startedAt: Date.now(), elapsed: 0 };
   stopTimer();
   state.timer = setInterval(() => {
     const q = state.quiz; if (!q) return stopTimer();
@@ -292,22 +340,27 @@ function startQuiz(opts) {
       const left = Math.max(0, q.timed - q.elapsed);
       el.textContent = fmtTime(left);
       el.classList.toggle("danger", left < 300);
-      if (left === 0) { toast("Temps écoulé !", "warn"); finishQuiz(); }
+      if (left === 0) { toast(t("quiz.timeUp"), "warn"); finishQuiz(); }
     } else el.textContent = fmtTime(q.elapsed);
   }, 1000);
   go("quiz");
 }
 
 function renderQuiz() {
+  state.view = "quiz";
   const z = state.quiz;
   const q = z.questions[z.i];
+  // "peek" = afficher temporairement l'autre langue pour cette question
+  const showLang = z.peek ? (getLang() === "fr" ? "en" : "fr") : getLang();
+  const txt = qText(q, showLang);
   const picks = z.picks[z.i];
   const checked = z.checked[z.i];
   const answered = z.picks.filter(p => p.length).length;
-  const chapter = state.chapters.find(c => c.id === q.chapter_id);
   const isOk = checked && sameSet(picks, q.correct);
+  const canPeek = hasFr(q);
+  const peekLabel = showLang === "fr" ? t("quiz.original") : t("quiz.translated");
 
-  const opts = q.options.map((o, idx) => {
+  const opts = txt.options.map((o, idx) => {
     const L = letter(idx);
     const sel = picks.includes(L);
     let cls = sel ? "selected" : "";
@@ -322,46 +375,49 @@ function renderQuiz() {
 
   const isLast = z.i === z.questions.length - 1;
   let mainBtn;
-  if (z.feedback && !checked) mainBtn = `<button class="btn btn-primary" id="btn-check" ${picks.length ? "" : "disabled"}>Valider</button>`;
-  else if (isLast) mainBtn = `<button class="btn btn-primary" id="btn-finish">Terminer</button>`;
-  else mainBtn = `<button class="btn btn-primary" id="btn-next">Suivante →</button>`;
+  if (z.feedback && !checked) mainBtn = `<button class="btn btn-primary" id="btn-check" ${picks.length ? "" : "disabled"}>${esc(t("quiz.check"))}</button>`;
+  else if (isLast) mainBtn = `<button class="btn btn-primary" id="btn-finish">${esc(t("quiz.finish"))}</button>`;
+  else mainBtn = `<button class="btn btn-primary" id="btn-next">${esc(t("quiz.next"))}</button>`;
 
   app.innerHTML = `
   <section class="quiz">
     <div class="quiz-head">
       <div>
-        <p class="mono kicker">${esc(z.label)}</p>
+        <p class="mono kicker">${esc(z.label())}</p>
         <p class="mono q-count">Q ${pad(z.i + 1)}<span class="muted">/${pad(z.questions.length)}</span>
           <span class="muted"> · CH_${pad(q.chapter_id)} #${q.number}</span></p>
       </div>
       <div class="quiz-head-right">
         <span id="timer" class="timer mono">${z.timed ? fmtTime(Math.max(0, z.timed - z.elapsed)) : fmtTime(z.elapsed)}</span>
-        <button class="btn btn-ghost btn-sm" id="btn-quit">Quitter</button>
+        <button class="btn btn-ghost btn-sm" id="btn-quit">${esc(t("quiz.quit"))}</button>
       </div>
     </div>
     <div class="progress"><span style="width:${pct(z.i + (checked ? 1 : 0), z.questions.length)}%"></span></div>
 
-    <article class="panel question-panel">
-      <p class="q-chapter mono muted">${esc(chapter?.title || "")}</p>
-      <h2 class="q-text">${esc(q.question)}</h2>
-      ${q.multi ? `<p class="hint mono">[ plusieurs réponses possibles ]</p>` : ""}
+    <article class="panel question-panel" lang="${txt.lang}">
+      <div class="q-top">
+        <p class="q-chapter mono muted">${esc(chTitle(chById(q.chapter_id)))}</p>
+        ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}
+      </div>
+      <h2 class="q-text">${esc(txt.question)}</h2>
+      ${q.multi ? `<p class="hint mono">${esc(t("quiz.multi"))}</p>` : ""}
       <ol class="opts">${opts}</ol>
       ${checked ? `
       <div class="explain ${isOk ? "ok" : "ko"}">
-        <p class="mono verdict">${isOk ? "&gt; ACCESS GRANTED : bonne réponse" : `&gt; ACCESS DENIED : réponse attendue ${q.correct.join(", ")}`}</p>
-        <p>${esc(q.explanation)}</p>
+        <p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p>
+        <p>${esc(txt.explanation)}</p>
       </div>` : ""}
     </article>
 
     <div class="quiz-nav">
-      <button class="btn btn-ghost" id="btn-prev" ${z.i === 0 ? "disabled" : ""}>← Précédente</button>
-      <span class="muted mono small">${answered}/${z.questions.length} répondues</span>
+      <button class="btn btn-ghost" id="btn-prev" ${z.i === 0 ? "disabled" : ""}>${esc(t("quiz.prev"))}</button>
+      <span class="muted mono small">${esc(t("quiz.answered", { a: answered, n: z.questions.length }))}</span>
       <div class="row">
-        ${!z.feedback && !isLast ? `<button class="btn btn-ghost" id="btn-finish-early">Terminer</button>` : ""}
+        ${!z.feedback && !isLast ? `<button class="btn btn-ghost" id="btn-finish-early">${esc(t("quiz.finish"))}</button>` : ""}
         ${mainBtn}
       </div>
     </div>
-    ${!z.feedback ? `<nav class="qmap" aria-label="Navigation entre questions">${z.questions.map((_, k) =>
+    ${!z.feedback ? `<nav class="qmap" aria-label="${esc(t("quiz.nav"))}">${z.questions.map((_, k) =>
       `<button class="qdot ${k === z.i ? "cur" : ""} ${z.picks[k].length ? "done" : ""}" data-goto="${k}">${k + 1}</button>`).join("")}</nav>` : ""}
   </section>`;
 
@@ -370,10 +426,15 @@ function renderQuiz() {
   on("btn-check", check);
   on("btn-next", () => move(1));
   on("btn-prev", () => move(-1));
-  on("btn-finish", () => { if (!z.feedback && answered < z.questions.length && !confirm(`${z.questions.length - answered} question(s) sans réponse compteront comme fausses. Terminer ?`)) return; finishQuiz(); });
-  on("btn-finish-early", () => { if (confirm(`Terminer maintenant ? ${z.questions.length - answered} question(s) sans réponse compteront comme fausses.`)) finishQuiz(); });
+  on("btn-peek", () => { z.peek = !z.peek; renderQuiz(); });
+  on("btn-finish", () => {
+    const left = z.questions.length - answered;
+    if (!z.feedback && left > 0 && !confirm(t("quiz.unanswered", { n: left }))) return;
+    finishQuiz();
+  });
+  on("btn-finish-early", () => { if (confirm(t("quiz.finishEarly", { n: z.questions.length - answered }))) finishQuiz(); });
   on("btn-quit", () => go(""));
-  app.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { z.i = +b.dataset.goto; renderQuiz(); });
+  app.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { z.i = +b.dataset.goto; z.peek = false; renderQuiz(); });
 }
 
 function toggle(L) {
@@ -393,6 +454,7 @@ function check() {
 function move(d) {
   const z = state.quiz;
   z.i = Math.min(z.questions.length - 1, Math.max(0, z.i + d));
+  z.peek = false;
   renderQuiz();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -405,7 +467,7 @@ async function finishQuiz() {
   const duration = Math.floor((Date.now() - z.startedAt) / 1000);
   state.lastResult = { label: z.label, mode: z.mode, chapter_id: z.chapter_id, details, correct, total: details.length, duration, saved: false, opts: z };
   state.quiz = null;
-  // On n'enregistre que les questions auxquelles on a répondu (sauf examen : toutes comptent).
+  // On n'enregistre que les questions répondues (sauf examen : toutes comptent).
   const toSave = details.filter(d => z.mode === "exam" || d.picks.length);
   try {
     await state.store.saveAttempt(
@@ -413,76 +475,80 @@ async function finishQuiz() {
       toSave.map(d => ({ question_id: d.q.id, selected: d.picks, is_correct: d.ok })));
     state.lastResult.saved = true;
     await refreshProgress();
-  } catch (e) { console.error(e); toast("Résultat non enregistré : " + e.message, "err"); }
+  } catch (e) { console.error(e); toast(t("quiz.notSaved") + e.message, "err"); }
   go("results");
 }
 
 // ------------------------------------------------------------------ results
 function renderResults() {
+  state.view = "results";
   const r = state.lastResult;
   const score = pct(r.correct, r.total);
   const pass = score >= PASS;
   const wrong = r.details.filter(d => !d.ok);
-  const rows = r.details.map((d, k) => `
-    <details class="review ${d.ok ? "ok" : "ko"}" ${d.ok ? "" : "open"}>
-      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">CH_${pad(d.q.chapter_id)}#${d.q.number}</span> ${esc(d.q.question.slice(0, 110))}${d.q.question.length > 110 ? "…" : ""}</summary>
-      <p class="q-text-sm">${esc(d.q.question)}</p>
-      <ol class="opts opts-sm">${d.q.options.map((o, i) => {
+  const rows = r.details.map((d, k) => {
+    const txt = qText(d.q);
+    return `
+    <details class="review ${d.ok ? "ok" : "ko"}" ${d.ok ? "" : "open"} lang="${txt.lang}">
+      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">CH_${pad(d.q.chapter_id)}#${d.q.number}</span> ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
+      <p class="q-text-sm">${esc(txt.question)}</p>
+      <ol class="opts opts-sm">${txt.options.map((o, i) => {
         const L = letter(i); const c = d.q.correct.includes(L); const s = d.picks.includes(L);
-        return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? '<span class="mono muted">(votre choix)</span>' : ""}</li>`;
+        return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
-      <p class="muted">${d.picks.length ? "" : "<em>Sans réponse.</em> "}${esc(d.q.explanation)}</p>
-    </details>`).join("");
+      <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
+    </details>`;
+  }).join("");
 
   app.innerHTML = `
   <section class="results">
     <div class="panel score-panel ${pass ? "pass" : "fail"}">
-      <p class="mono kicker">${esc(r.label)}</p>
+      <p class="mono kicker">${esc(r.label())}</p>
       <h1 class="glitch" data-text="${pass ? "ACCESS GRANTED" : "ACCESS DENIED"}">${pass ? "ACCESS GRANTED" : "ACCESS DENIED"}</h1>
       <div class="ring" style="--p:${score}"><span class="mono">${score}%</span></div>
-      <p class="mono">${r.correct}/${r.total} correctes · ${fmtTime(r.duration)} · seuil ${PASS}%</p>
-      <p class="muted small mono">${r.saved ? "✓ résultat enregistré" : "✗ résultat non enregistré"}</p>
+      <p class="mono">${esc(t("res.stats", { c: r.correct, t: r.total, time: fmtTime(r.duration), p: PASS }))}</p>
+      <p class="muted small mono">${esc(r.saved ? t("res.saved") : t("res.notSaved"))}</p>
       <div class="row center">
-        <button class="btn btn-primary" id="btn-retry">Recommencer</button>
-        ${wrong.length ? `<button class="btn btn-danger" id="btn-retry-wrong">Refaire les ${wrong.length} erreurs</button>` : ""}
-        <button class="btn btn-ghost" id="btn-home">Accueil</button>
+        <button class="btn btn-primary" id="btn-retry">${esc(t("res.retry"))}</button>
+        ${wrong.length ? `<button class="btn btn-danger" id="btn-retry-wrong">${esc(t("res.retryWrong", { n: wrong.length }))}</button>` : ""}
+        <button class="btn btn-ghost" id="btn-home">${esc(t("res.home"))}</button>
       </div>
     </div>
-    <h2 class="mono section-title">// CORRECTION DÉTAILLÉE</h2>
+    <h2 class="mono section-title">${esc(t("res.detail"))}</h2>
     ${rows}
   </section>`;
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-retry").onclick = () => startQuiz({ ...r.opts, questions: r.mode === "chapter" ? r.opts.questions : shuffle(r.opts.questions) });
   const rw = document.getElementById("btn-retry-wrong");
-  if (rw) rw.onclick = () => startQuiz({ mode: "mistakes", chapter_id: r.chapter_id, label: "Erreurs · " + r.label, questions: shuffle(wrong.map(d => d.q)), feedback: true });
+  if (rw) rw.onclick = () => startQuiz({ mode: "mistakes", chapter_id: r.chapter_id, label: () => t("mode.errorsOf", { label: r.label() }), questions: shuffle(wrong.map(d => d.q)), feedback: true });
 }
 
 // ------------------------------------------------------------------ history
 function renderHistory() {
-  const modeName = { chapter: "Chapitre", exam: "Examen blanc", mistakes: "Erreurs", domain: "Domaine" };
+  state.view = "history";
   const rows = state.attempts.map(a => {
     const s = pct(a.correct, a.total);
-    return `<tr><td class="mono">${fmtDate(a.created_at)}</td><td>${modeName[a.mode] || a.mode}${a.chapter_id ? ` · CH_${pad(a.chapter_id)}` : ""}</td>
+    return `<tr><td class="mono">${fmtDate(a.created_at)}</td><td>${esc(t("type." + a.mode))}${a.chapter_id ? ` · CH_${pad(a.chapter_id)}` : ""}</td>
       <td class="mono">${a.correct}/${a.total}</td><td class="mono ${s >= PASS ? "accent" : "danger"}">${s}%</td><td class="mono">${fmtTime(a.duration_s || 0)}</td></tr>`;
   }).join("");
   const chRows = state.chapters.map(c => {
     const s = chapterStats(c.id);
-    return `<tr><td class="mono">CH_${pad(c.id)}</td><td>${esc(c.title)}</td><td class="mono">${s.seen}/${s.total}</td>
+    return `<tr><td class="mono">CH_${pad(c.id)}</td><td>${esc(chTitle(c))}</td><td class="mono">${s.seen}/${s.total}</td>
       <td class="mono">${s.seen ? pct(s.ok, s.seen) + "%" : "–"}</td><td class="mono">${s.best >= 0 ? s.best + "%" : "–"}</td></tr>`;
   }).join("");
   app.innerHTML = `
   <section>
-    <div class="row between"><h1 class="mono">// HISTORIQUE</h1><button class="btn btn-ghost" id="btn-home">← Accueil</button></div>
-    <h2 class="mono section-title">Par chapitre</h2>
-    <div class="table-wrap"><table><thead><tr><th>#</th><th>Chapitre</th><th>Vues</th><th>Réussite</th><th>Meilleur quiz</th></tr></thead><tbody>${chRows}</tbody></table></div>
-    <h2 class="mono section-title">Sessions</h2>
-    ${rows ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Score</th><th>%</th><th>Durée</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="muted">Aucune session pour l'instant.</p>`}
-    <p class="reset-zone"><button class="btn btn-danger btn-sm" id="btn-reset">Effacer toute ma progression</button></p>
+    <div class="row between"><h1 class="mono">${esc(t("hist.title"))}</h1><button class="btn btn-ghost" id="btn-home">${esc(t("hist.back"))}</button></div>
+    <h2 class="mono section-title">${esc(t("hist.byChapter"))}</h2>
+    <div class="table-wrap"><table><thead><tr><th>#</th><th>${esc(t("hist.colChapter"))}</th><th>${esc(t("hist.colSeen"))}</th><th>${esc(t("hist.colRate"))}</th><th>${esc(t("hist.colBest"))}</th></tr></thead><tbody>${chRows}</tbody></table></div>
+    <h2 class="mono section-title">${esc(t("hist.sessions"))}</h2>
+    ${rows ? `<div class="table-wrap"><table><thead><tr><th>${esc(t("hist.colDate"))}</th><th>${esc(t("hist.colType"))}</th><th>${esc(t("hist.colScore"))}</th><th>%</th><th>${esc(t("hist.colTime"))}</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="muted">${esc(t("hist.none"))}</p>`}
+    <p class="reset-zone"><button class="btn btn-danger btn-sm" id="btn-reset">${esc(t("hist.reset"))}</button></p>
   </section>`;
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-reset").onclick = async () => {
-    if (!confirm("Effacer définitivement toutes vos sessions et réponses ?")) return;
-    try { await state.store.resetProgress(); await refreshProgress(); toast("Progression effacée.", "ok"); renderHistory(); }
+    if (!confirm(t("hist.resetConfirm"))) return;
+    try { await state.store.resetProgress(); await refreshProgress(); toast(t("hist.resetDone"), "ok"); renderHistory(); }
     catch (e) { toast(e.message, "err"); }
   };
 }

@@ -159,7 +159,7 @@ input:focus, select:focus { border-color: var(--green); outline: none; box-shado
 .stat-val { font-size: 1.7rem; font-weight: 800; color: var(--green); }
 .stat-val small { font-size: .9rem; color: var(--muted); font-weight: 400; }
 .stat-lbl { font-size: .78rem; color: var(--muted); }
-.actions-panel { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-bottom: 30px; }
+.actions-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 22px; margin-bottom: 30px; }
 .action h3 { color: var(--cyan); font-size: .95rem; }
 .action p { font-size: .88rem; margin: 0 0 12px; }
 
@@ -326,3 +326,25 @@ code { font-family: var(--mono); font-size: .85em; }
   padding: .6rem .8rem; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 8px; }
 .saved-item strong { display: block; }
 .saved-item .row { display: flex; gap: .4rem; }
+
+/* Mode hors ligne */
+.offline-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; margin: -14px 0 30px; }
+.offline-panel h3 { margin: 0 0 .3rem; }
+.offline-panel p { margin: 0; }
+.offline-panel .row { display: flex; gap: .4rem; flex-wrap: wrap; }
+.badge.badge-off { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 60%, transparent); }
+
+/* Barre du haut sur téléphone : le sélecteur FR/EN ne doit jamais être écrasé */
+.topbar-right > * { flex-shrink: 0; }
+.topbar-right .user-label { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) {
+  .brand-text { display: none; }
+  .topbar-right { gap: 8px; }
+  #btn-logout { padding: 6px 10px; }
+}
+
+/* Questions marquées « à réviser » */
+.q-tools { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.btn.btn-flag.on { border-color: var(--amber); color: var(--amber); }
+.btn-flagged { border: 1px solid var(--amber); color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+.review-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

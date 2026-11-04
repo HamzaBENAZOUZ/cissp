@@ -314,3 +314,15 @@ code { font-family: var(--mono); font-size: .85em; }
   padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 0 0 14px; font-size: .92rem; line-height: 1.55; }
 .scenario .kicker { color: var(--cyan); }
 .scenario p:last-child { margin: 0; }
+
+/* Retours à la ligne des listes (1. 2. 3. / I. II. III.) et des énoncés sur plusieurs lignes */
+.q-text, .q-text-sm, .explain p, .review p, .scenario p { white-space: pre-line; }
+
+/* Quiz sauvegardés (reprise) */
+.saved-panel { margin-bottom: 1rem; }
+.saved-panel h3 { margin: 0 0 .6rem; }
+.saved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.saved-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem;
+  padding: .6rem .8rem; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 8px; }
+.saved-item strong { display: block; }
+.saved-item .row { display: flex; gap: .4rem; }

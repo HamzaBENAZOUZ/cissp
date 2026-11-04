@@ -301,3 +301,12 @@ tr:last-child td { border-bottom: none; }
 .q-top .q-chapter { margin: 0 0 8px; }
 code { font-family: var(--mono); font-size: .85em; }
 @media (max-width: 560px) { .badge { display: none; } }
+
+/* ---------- Sections Study Guide / Practice Tests ---------- */
+.sec-tabs { margin: 4px 0 14px; }
+.sec-tabs .seg-btn { font-size: .9rem; padding: 8px 16px; display: inline-flex; gap: 8px; align-items: baseline; }
+.sec-tabs .seg-btn small { font-size: .72rem; opacity: .8; }
+.scenario { border-left: 3px solid var(--cyan); background: color-mix(in srgb, var(--cyan) 7%, transparent);
+  padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 0 0 14px; font-size: .92rem; line-height: 1.55; }
+.scenario .kicker { color: var(--cyan); }
+.scenario p:last-child { margin: 0; }

@@ -25,13 +25,39 @@ const fmtDate = d => new Date(d).toLocaleString(locale(), { dateStyle: "short", 
 function shuffle(a) { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; }
 const sameSet = (a, b) => a.length === b.length && [...a].sort().join() === [...b].sort().join();
 
+/* Mise en forme des listes collées dans le texte du livre (« 1. … 2. … 3. … », « I. … II. … III. … ») :
+   on passe à la ligne avant chaque élément, seulement si au moins 3 éléments se suivent dans l'ordre
+   (évite les faux positifs comme « Type I. » isolé). Affichage via CSS white-space: pre-line. */
+const SEQS = [
+  ["1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9."],
+  ["I.", "II.", "III.", "IV.", "V.", "VI.", "VII.", "VIII."],
+];
+function breakSeq(t, labels) {
+  const at = []; let pos = 0;
+  for (const lab of labels) {
+    const i = t.indexOf(" " + lab + " ", pos);
+    if (i < 0) break;
+    at.push(i); pos = i + lab.length + 1;
+  }
+  if (at.length < 3) return t;
+  let out = t;
+  for (const i of at.reverse()) out = out.slice(0, i) + "\n" + out.slice(i + 1);
+  return out;
+}
+function listBreaks(t) {
+  if (!t) return t;
+  for (const s of SEQS) t = breakSeq(t, s);
+  return t;
+}
+
 /** Texte d'une question dans la langue voulue (repli sur l'anglais si pas de traduction). */
 function qText(q, lang = getLang()) {
+  const f = o => ({ ...o, question: listBreaks(o.question), explanation: listBreaks(o.explanation) });
   if (lang === "fr" && q.question_fr) {
-    return { question: q.question_fr, options: q.options_fr || q.options, explanation: q.explanation_fr || q.explanation,
-      scenario: q.scenario_fr || q.scenario, lang: "fr" };
+    return f({ question: q.question_fr, options: q.options_fr || q.options, explanation: q.explanation_fr || q.explanation,
+      scenario: q.scenario_fr || q.scenario, lang: "fr" });
   }
-  return { question: q.question, options: q.options, explanation: q.explanation, scenario: q.scenario, lang: "en" };
+  return f({ question: q.question, options: q.options, explanation: q.explanation, scenario: q.scenario, lang: "en" });
 }
 const hasFr = q => !!q.question_fr;
 
@@ -200,7 +226,8 @@ function route() {
   if (!state.session || !state.chapters.length) return;
   const h = location.hash.replace(/^#\/?/, "");
   if (state.quiz && h !== "quiz") {
-    if (!confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
+    if (state.quiz.saveId) saveQuiz(true);  // quiz déjà sauvegardé : on garde l'état à jour, pas besoin de confirmer
+    else if (!confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
     stopTimer(); state.quiz = null;
   }
   if (h === "quiz" && state.quiz) return renderQuiz();
@@ -280,6 +307,22 @@ function mistakes(filter = () => true) {
 }
 
 // ------------------------------------------------------------------ home
+function savedPanel() {
+  const list = loadSaved();
+  if (!list.length) return "";
+  return `<section class="panel saved-panel">
+    <h3 class="mono">💾 ${esc(t("save.title2"))}</h3>
+    <ul class="saved-list">${list.map(e => {
+      const done = e.feedback ? e.checked.filter(Boolean).length : e.picks.filter(p => p && p.length).length;
+      return `<li class="saved-item">
+        <div><strong>${esc(labelOf(e.lab))}</strong>
+          <span class="muted mono">${esc(t("save.meta", { a: done, n: e.qids.length, q: e.i + 1, d: fmtDate(e.savedAt) }))}</span></div>
+        <div class="row"><button class="btn btn-primary btn-sm" data-resume="${esc(e.id)}">${esc(t("save.resume"))}</button>
+          <button class="btn btn-ghost btn-sm" data-drop="${esc(e.id)}">${esc(t("save.drop"))}</button></div>
+      </li>`;
+    }).join("")}</ul></section>`;
+}
+
 function renderHome() {
   stopTimer();
   state.view = "home";
@@ -355,6 +398,7 @@ function renderHome() {
     </div>
   </section>
 
+  ${savedPanel()}
   <section class="panel actions-panel">
     <div class="action">
       <h3 class="mono">${esc(t("home.exam"))}</h3>
@@ -385,38 +429,91 @@ function renderHome() {
   app.querySelectorAll("[data-exam-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.examChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);
-    startQuiz({ mode: "exam", chapter_id: id, label: () => t("mode.test", { name: chTitle(chById(id)) }), questions: qs, feedback: false, timed: qs.length * 72 });
+    startQuiz({ mode: "exam", chapter_id: id, lab: { k: "test", id }, questions: qs, feedback: false, timed: qs.length * 72 });
   });
 
   app.querySelectorAll("[data-start-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.startChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);
-    startQuiz({ mode: "chapter", chapter_id: id, label: () => `${chLabel(id)} · ${chTitle(chById(id))}`, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
+    startQuiz({ mode: "chapter", chapter_id: id, lab: { k: "chapter", id }, questions: b.dataset.shuffle ? shuffle(qs) : qs, feedback: true });
   });
   app.querySelectorAll("[data-mistakes-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.mistakesChapter;
-    startQuiz({ mode: "mistakes", chapter_id: id, label: () => t("mode.mistakesCh", { n: chLabel(id) }), questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: id, lab: { k: "mistakesCh", id }, questions: shuffle(mistakes(q => q.chapter_id === id)), feedback: true });
   });
   app.querySelectorAll("[data-start-domain]").forEach(b => b.onclick = () => {
     const d = +b.dataset.startDomain;
     const ids = SC.filter(c => c.domain === d).map(c => c.id);
     const qs = shuffle(state.questions.filter(q => ids.includes(q.chapter_id))).slice(0, 30);
-    startQuiz({ mode: "domain", chapter_id: null, label: () => t("mode.domain", { d, name: t("domain." + d) }), questions: qs, feedback: true });
+    startQuiz({ mode: "domain", chapter_id: null, lab: { k: "domain", d }, questions: qs, feedback: true });
+  });
+  app.querySelectorAll("[data-resume]").forEach(b => b.onclick = () => resumeQuiz(b.dataset.resume));
+  app.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => {
+    if (confirm(t("save.dropConfirm"))) { dropSaved(b.dataset.drop); renderHome(); }
   });
   document.getElementById("btn-exam").onclick = () => {
     const n = +document.getElementById("exam-size").value;
-    startQuiz({ mode: "exam", chapter_id: null, label: () => t("mode.exam", { n }), questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * 72 });
+    startQuiz({ mode: "exam", chapter_id: null, lab: { k: "exam", n }, questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * 72 });
   };
   document.getElementById("btn-mistakes").onclick = () => {
-    startQuiz({ mode: "mistakes", chapter_id: null, label: () => t("mode.mistakes"), questions: shuffle(mistakes(inSec)), feedback: true });
+    startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "mistakes" }, questions: shuffle(mistakes(inSec)), feedback: true });
   };
   document.getElementById("btn-history").onclick = () => go("history");
 }
 
 // ------------------------------------------------------------------ quiz
-function startQuiz(opts) {
+/* Libellé d'un quiz, reconstruit à partir d'une description sérialisable (pour pouvoir le sauvegarder). */
+function labelOf(lab) {
+  if (!lab) return "";
+  switch (lab.k) {
+    case "test": return t("mode.test", { name: chTitle(chById(lab.id)) });
+    case "chapter": return `${chLabel(lab.id)} · ${chTitle(chById(lab.id))}`;
+    case "mistakesCh": return t("mode.mistakesCh", { n: chLabel(lab.id) });
+    case "domain": return t("mode.domain", { d: lab.d, name: t("domain." + lab.d) });
+    case "exam": return t("mode.exam", { n: lab.n });
+    case "mistakes": return t("mode.mistakes");
+    case "errorsOf": return t("mode.errorsOf", { label: labelOf(lab.of) });
+    default: return "";
+  }
+}
+
+// ---- Quiz sauvegardés (reprise plus tard) : stockés dans le navigateur, par utilisateur.
+const SAVE_MAX = 10;
+const saveKey = () => "cissp-saved-quizzes:" + ((state.session && state.session.user && (state.session.user.id || state.session.user.email)) || "local");
+function loadSaved() { try { return JSON.parse(localStorage.getItem(saveKey())) || []; } catch { return []; } }
+function writeSaved(list) { try { localStorage.setItem(saveKey(), JSON.stringify(list.slice(0, SAVE_MAX))); return true; } catch { return false; } }
+function dropSaved(id) { if (id) writeSaved(loadSaved().filter(x => x.id !== id)); }
+function saveQuiz(silent = false) {
+  const z = state.quiz; if (!z) return;
+  if (!z.saveId) z.saveId = "q" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const entry = {
+    id: z.saveId, savedAt: Date.now(), mode: z.mode, chapter_id: z.chapter_id, lab: z.lab, feedback: !!z.feedback,
+    timed: z.timed || 0, elapsed: Math.floor((Date.now() - z.startedAt) / 1000), i: z.i,
+    qids: z.questions.map(q => q.id), picks: z.picks, checked: z.checked,
+    section: secOf(z.questions[0].chapter_id),
+  };
+  const ok = writeSaved([entry, ...loadSaved().filter(x => x.id !== entry.id)]);
+  if (!silent) toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
+}
+// Après une première sauvegarde manuelle, chaque réponse met à jour la sauvegarde automatiquement.
+const autoSave = () => { if (state.quiz && state.quiz.saveId) saveQuiz(true); };
+function resumeQuiz(id) {
+  const e = loadSaved().find(x => x.id === id); if (!e) return;
+  const byId = new Map(state.questions.map(q => [q.id, q]));
+  const keep = e.qids.map((qid, k) => [byId.get(qid), k]).filter(([q]) => q);
+  if (!keep.length) { dropSaved(id); return toast(t("quiz.none"), "warn"); }
+  startQuiz({ mode: e.mode, chapter_id: e.chapter_id, lab: e.lab, feedback: e.feedback, timed: e.timed || undefined,
+    questions: keep.map(([q]) => q) }, {
+    saveId: e.id, i: Math.min(e.i, keep.length - 1), elapsed: e.elapsed || 0,
+    picks: keep.map(([, k]) => e.picks[k] || []), checked: keep.map(([, k]) => !!e.checked[k]),
+  });
+}
+
+function startQuiz(opts, resume = null) {
   if (!opts.questions.length) return toast(t("quiz.none"), "warn");
-  state.quiz = { ...opts, i: 0, peek: false, picks: opts.questions.map(() => []), checked: opts.questions.map(() => false), startedAt: Date.now(), elapsed: 0 };
+  const lab = opts.lab;
+  state.quiz = { ...opts, saveId: undefined, label: () => labelOf(lab), i: 0, peek: false, picks: opts.questions.map(() => []), checked: opts.questions.map(() => false), startedAt: Date.now(), elapsed: 0 };
+  if (resume) Object.assign(state.quiz, resume, { startedAt: Date.now() - (resume.elapsed || 0) * 1000 });
   stopTimer();
   state.timer = setInterval(() => {
     const q = state.quiz; if (!q) return stopTimer();
@@ -477,6 +574,7 @@ function renderQuiz() {
       </div>
       <div class="quiz-head-right">
         <span id="timer" class="timer mono">${z.timed ? fmtTime(Math.max(0, z.timed - z.elapsed)) : fmtTime(z.elapsed)}</span>
+        <button class="btn btn-ghost btn-sm" id="btn-save" title="${esc(t("save.title"))}">💾 ${esc(t("save.btn"))}</button>
         <button class="btn btn-ghost btn-sm" id="btn-quit">${esc(t("quiz.quit"))}</button>
       </div>
     </div>
@@ -524,6 +622,7 @@ function renderQuiz() {
     finishQuiz();
   });
   on("btn-finish-early", () => { if (confirm(t("quiz.finishEarly", { n: z.questions.length - answered }))) finishQuiz(); });
+  on("btn-save", () => saveQuiz());
   on("btn-quit", () => go(""));
   app.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { z.i = +b.dataset.goto; z.peek = false; renderQuiz(); });
 }
@@ -536,16 +635,18 @@ function toggle(L) {
   if (q.multi) p = p.includes(L) ? p.filter(x => x !== L) : [...p, L];
   else p = p[0] === L ? [] : [L];
   z.picks[z.i] = p;
+  autoSave();
   renderQuiz();
 }
 function check() {
   const z = state.quiz; if (!z.picks[z.i].length) return;
-  z.checked[z.i] = true; renderQuiz();
+  z.checked[z.i] = true; autoSave(); renderQuiz();
 }
 function move(d) {
   const z = state.quiz;
   z.i = Math.min(z.questions.length - 1, Math.max(0, z.i + d));
   z.peek = false;
+  autoSave();
   renderQuiz();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -558,6 +659,7 @@ async function finishQuiz() {
   const duration = Math.floor((Date.now() - z.startedAt) / 1000);
   state.lastResult = { label: z.label, mode: z.mode, chapter_id: z.chapter_id, details, correct, total: details.length, duration, saved: false, opts: z };
   state.quiz = null;
+  dropSaved(z.saveId);  // quiz terminé : la sauvegarde de reprise n'a plus lieu d'être
   // On n'enregistre que les questions répondues (sauf examen : toutes comptent).
   const toSave = details.filter(d => z.mode === "exam" || d.picks.length);
   try {
@@ -614,7 +716,7 @@ function renderResults() {
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-retry").onclick = () => startQuiz({ ...r.opts, questions: r.mode === "chapter" ? r.opts.questions : shuffle(r.opts.questions) });
   const rw = document.getElementById("btn-retry-wrong");
-  if (rw) rw.onclick = () => startQuiz({ mode: "mistakes", chapter_id: r.chapter_id, label: () => t("mode.errorsOf", { label: r.label() }), questions: shuffle(wrong.map(d => d.q)), feedback: true });
+  if (rw) rw.onclick = () => startQuiz({ mode: "mistakes", chapter_id: r.chapter_id, lab: { k: "errorsOf", of: r.opts.lab }, questions: shuffle(wrong.map(d => d.q)), feedback: true });
 }
 
 // ------------------------------------------------------------------ history

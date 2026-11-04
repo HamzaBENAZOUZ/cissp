@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CISSP // Training Terminal</title>
+  <meta name="description" content="Entraînement QCM CISSP par chapitre (Official Study Guide, 10e édition).">
+  <meta name="robots" content="noindex, nofollow">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="matrix" aria-hidden="true"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a href="#/" class="brand" data-nav="home">
+      <span class="brand-lock">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M6 10V7a6 6 0 0 1 12 0v3M5 10h14v11H5z M12 14v3"/></svg>
+      </span>
+      <span class="brand-text">CISSP<span class="accent">://</span>training</span>
+    </a>
+    <div class="topbar-right">
+      <span id="mode-badge" class="badge"></span>
+      <span id="user-label" class="user-label"></span>
+      <button id="btn-logout" class="btn btn-ghost btn-sm" hidden>Déconnexion</button>
+    </div>
+  </header>
+
+  <main id="app" class="container">
+    <div class="boot">
+      <p class="mono">&gt; initialisation du terminal<span class="cursor">_</span></p>
+    </div>
+  </main>
+
+  <footer class="footer mono">
+    <span>Questions : CISSP Official Study Guide, 10e éd. (usage personnel)</span>
+    <span>Raccourcis : <kbd>A</kbd>–<kbd>K</kbd> choisir · <kbd>Entrée</kbd> valider / suivante</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/matrix.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

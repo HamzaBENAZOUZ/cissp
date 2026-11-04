@@ -1,7 +1,19 @@
 // Couche données : Supabase (production) ou navigateur (mode local).
 // Les deux exposent la même interface.
 
-const DOMAIN_OF = {1:1,2:1,3:1,4:1,5:2,6:3,7:3,8:3,9:3,10:3,11:4,12:4,13:5,14:5,15:6,16:7,17:7,18:7,19:7,20:8,21:8};
+const DOMAIN_OF = {1:1,2:1,3:1,4:1,5:2,6:3,7:3,8:3,9:3,10:3,11:4,12:4,13:5,14:5,15:6,16:7,17:7,18:7,19:7,20:8,21:8,
+  101:1,102:2,103:3,104:4,105:5,106:6,107:7,108:8};   // 101-112 : Official Practice Tests (109-112 = tests complets)
+
+/** Lit toutes les lignes d'une requête Supabase, par pages de 1000 (limite par défaut de l'API). */
+async function fetchAll(build) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < 1000) return out;
+  }
+}
 
 /** Garde, pour chaque question, uniquement la réponse la plus récente. */
 export function latestByQuestion(answers) {
@@ -47,11 +59,10 @@ export class SupabaseStore {
   async loadContent() {
     const [ch, qs] = await Promise.all([
       this.sb.from("chapters").select("*").order("id"),
-      this.sb.from("questions").select("*").order("chapter_id").order("number").range(0, 4999),
+      fetchAll(() => this.sb.from("questions").select("*").order("chapter_id").order("number")),
     ]);
     if (ch.error) throw ch.error;
-    if (qs.error) throw qs.error;
-    return { chapters: ch.data, questions: qs.data };
+    return { chapters: ch.data, questions: qs };
   }
   async attempts() {
     const { data, error } = await this.sb.from("attempts").select("*").order("created_at", { ascending: false }).limit(500);
@@ -59,10 +70,8 @@ export class SupabaseStore {
     return data;
   }
   async answers() {
-    const { data, error } = await this.sb.from("answers")
-      .select("question_id,is_correct,created_at").order("created_at", { ascending: false }).range(0, 9999);
-    if (error) throw error;
-    return data;
+    return fetchAll(() => this.sb.from("answers")
+      .select("question_id,is_correct,created_at").order("created_at", { ascending: false }));
   }
   async saveAttempt(attempt, answers) {
     const { data, error } = await this.sb.from("attempts").insert(attempt).select("id").single();
@@ -102,14 +111,20 @@ export class LocalStore {
     const res = await fetch(this.dataUrl, { cache: "no-store" });
     if (!res.ok) throw new Error(`Impossible de lire ${this.dataUrl} (HTTP ${res.status}). Configurez Supabase dans js/config.js ou ajoutez le fichier local.`);
     const raw = await res.json();
-    const chapters = raw.map(c => ({ id: c.chapter, title: c.title, title_fr: c.title_fr || null, domain: DOMAIN_OF[c.chapter] }));
+    // Section « Practice Tests » : fichier facultatif à côté de questions.json
+    try {
+      const r2 = await fetch(this.dataUrl.replace(/[^/]+$/, "practice.json"), { cache: "no-store" });
+      if (r2.ok) raw.push(...await r2.json());
+    } catch { /* pas de section practice en local */ }
+    const chapters = raw.map(c => ({ id: c.chapter, title: c.title, title_fr: c.title_fr || null, domain: DOMAIN_OF[c.chapter] ?? null }));
     const questions = [];
     for (const c of raw) for (const q of c.questions) {
       questions.push({
         id: c.chapter * 1000 + q.n, chapter_id: c.chapter, number: q.n, question: q.q,
         options: q.opts, correct: q.ans, explanation: q.exp,
-        multi: q.ans.length > 1 || /choose all that apply/i.test(q.q),
+        multi: q.ans.length > 1 || /(choose|select) all that apply/i.test(q.q),
         question_fr: q.q_fr || null, options_fr: q.opts_fr || null, explanation_fr: q.exp_fr || null,
+        scenario: q.scenario || null, scenario_fr: q.scenario_fr || null,
       });
     }
     return { chapters, questions };

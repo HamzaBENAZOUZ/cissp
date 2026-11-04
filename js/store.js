@@ -102,13 +102,14 @@ export class LocalStore {
     const res = await fetch(this.dataUrl, { cache: "no-store" });
     if (!res.ok) throw new Error(`Impossible de lire ${this.dataUrl} (HTTP ${res.status}). Configurez Supabase dans js/config.js ou ajoutez le fichier local.`);
     const raw = await res.json();
-    const chapters = raw.map(c => ({ id: c.chapter, title: c.title, domain: DOMAIN_OF[c.chapter] }));
+    const chapters = raw.map(c => ({ id: c.chapter, title: c.title, title_fr: c.title_fr || null, domain: DOMAIN_OF[c.chapter] }));
     const questions = [];
     for (const c of raw) for (const q of c.questions) {
       questions.push({
         id: c.chapter * 1000 + q.n, chapter_id: c.chapter, number: q.n, question: q.q,
         options: q.opts, correct: q.ans, explanation: q.exp,
         multi: q.ans.length > 1 || /choose all that apply/i.test(q.q),
+        question_fr: q.q_fr || null, options_fr: q.opts_fr || null, explanation_fr: q.exp_fr || null,
       });
     }
     return { chapters, questions };

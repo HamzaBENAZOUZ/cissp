@@ -218,6 +218,10 @@ input:focus, select:focus { border-color: var(--green); outline: none; box-shado
 .explain.ko { border-color: color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 5%, transparent); }
 .explain p { margin: 0 0 6px; }
 .verdict { font-weight: 800; }
+.verdict-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.verdict-row .verdict { margin: 0; }
+.btn-speak.on { border-color: var(--cyan); color: var(--cyan); }
+.review .btn-speak { margin-top: 4px; }
 .explain.ok .verdict { color: var(--green); }
 .explain.ko .verdict { color: var(--red); }
 .quiz-nav { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }

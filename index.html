@@ -11,6 +11,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // Applique le thème avant l'affichage (évite un flash).
+    (function () {
+      var th = null;
+      try { th = localStorage.getItem("cissp-theme"); } catch (e) {}
+      if (th !== "light" && th !== "dark") th = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.dataset.theme = th;
+    })();
+  </script>
 </head>
 <body>
   <canvas id="matrix" aria-hidden="true"></canvas>
@@ -25,6 +34,14 @@
     </a>
     <div class="topbar-right">
       <span id="mode-badge" class="badge"></span>
+      <div class="seg" role="group" aria-label="Langue / Language">
+        <button class="seg-btn mono" data-lang="fr" aria-pressed="false">FR</button>
+        <button class="seg-btn mono" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <button id="btn-theme" class="icon-btn" aria-pressed="false">
+        <svg class="ico-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="ico-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
       <span id="user-label" class="user-label"></span>
       <button id="btn-logout" class="btn btn-ghost btn-sm" hidden>Déconnexion</button>
     </div>
@@ -32,13 +49,13 @@
 
   <main id="app" class="container">
     <div class="boot">
-      <p class="mono">&gt; initialisation du terminal<span class="cursor">_</span></p>
+      <p class="mono">&gt; boot<span class="cursor">_</span></p>
     </div>
   </main>
 
   <footer class="footer mono">
-    <span>Questions : CISSP Official Study Guide, 10e éd. (usage personnel)</span>
-    <span>Raccourcis : <kbd>A</kbd>–<kbd>K</kbd> choisir · <kbd>Entrée</kbd> valider / suivante</span>
+    <span id="footer-src"></span>
+    <span id="footer-keys"></span>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>

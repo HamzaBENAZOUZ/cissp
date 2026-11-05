@@ -1,0 +1,6 @@
+# Contenu sous copyright (CISSP Official Study Guide) : ne jamais publier
+private/
+
+.DS_Store
+Thumbs.db
+__pycache__/

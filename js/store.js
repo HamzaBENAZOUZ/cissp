@@ -1,19 +1,30 @@
 // Couche données : Supabase (production) ou navigateur (mode local).
 // Les deux exposent la même interface.
-import { idbGet, idbSet, idbClear, offlineEnabled, setOfflineEnabled, isNetErr, withTimeout } from "./offline.js";
+import { idbGet, idbSet, idbClear, offlineEnabled, setOfflineEnabled, isNetErr, withTimeout, autonomous, setAutonomous } from "./offline.js";
 
 const DOMAIN_OF = {1:1,2:1,3:1,4:1,5:2,6:3,7:3,8:3,9:3,10:3,11:4,12:4,13:5,14:5,15:6,16:7,17:7,18:7,19:7,20:8,21:8,
-  101:1,102:2,103:3,104:4,105:5,106:6,107:7,108:8};   // 101-112 : Official Practice Tests (109-112 = tests complets)
+  101:1,102:2,103:3,104:4,105:5,106:6,107:7,108:8,   // 101-112 : Official Practice Tests (109-112 = tests complets)
+  // CCSP : Study Guide 3e éd. (201-210) et Official Practice Tests 3e éd. (301-306 = domaines 1-6, 307-308 = tests complets)
+  201:1,202:2,203:2,204:3,205:3,206:4,207:5,208:5,209:6,210:6,
+  301:1,302:2,303:3,304:4,305:5,306:6};
 
 // Copie locale des quiz sauvegardés et des marques : ces fonctions marchent même si les tables
 // saved_quizzes (v4) ou flags (v6) n'ont pas encore été créées dans Supabase, ou sans réseau.
 const LS_SAVED_SB = "cissp-saved-quizzes:sb", LS_FLAGS_SB = "cissp-flags:sb";
+// Écritures refusées par le serveur (droits, RLS…) : gardées à part pour ne pas être écrasées par la liste du serveur.
+const LS_SAVED_PEND = "cissp-saved-pending:sb", LS_FLAGS_PEND = "cissp-flags-pending:sb";
 const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } };
 /** Table absente côté Supabase (migration pas encore exécutée). */
 const isMissingTable = e => !!e && (e.code === "42P01" || e.code === "PGRST205" || e.code === "PGRST202" ||
   /does not exist|could not find the table|schema cache/i.test(e.message || ""));
 const softErr = e => isNetErr(e) || isMissingTable(e);
+/** Message court d'une erreur Supabase, pour le diagnostic (code + message). */
+const errText = e => [e && e.code, e && (e.message || e.details)].filter(Boolean).join(" ").slice(0, 160) || String(e);
+
+/** UUID v4 (crypto.randomUUID n'existe que sur les pages https). */
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() :
+  "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
 
 /** Lit toutes les lignes d'une requête Supabase, par pages de 1000 (limite par défaut de l'API). */
 async function fetchAll(build) {
@@ -44,6 +55,12 @@ export class SupabaseStore {
     this.offline = false;   // vrai quand les données viennent de la copie hors ligne
   }
   async session() {
+    // Mode autonome : aucune connexion, aucune authentification, on reprend le compte enregistré sur l'appareil.
+    if (autonomous()) {
+      const user = await idbGet("user");
+      if (user) { this.offline = true; this.autonomous = true; return { user, offline: true }; }
+      setAutonomous(false);   // copie incomplète : on revient au mode normal
+    }
     try {
       // Hors ligne avec un jeton expiré, getSession() peut attendre longtemps : on borne l'attente.
       const { data } = await withTimeout(this.sb.auth.getSession(), navigator.onLine ? 15000 : 3000);
@@ -67,13 +84,13 @@ export class SupabaseStore {
   }
   onAuth(cb) {
     this.sb.auth.onAuthStateChange((e, s) => {
-      if (!s && this.offline && e !== "SIGNED_OUT") return;   // hors ligne : on garde la session locale
+      if (!s && this.offline && (this.autonomous || e !== "SIGNED_OUT")) return;   // hors ligne / autonome : on garde la session locale
       cb(s);
     });
   }
   /** Retour de la connexion : envoie ce qui a été fait hors ligne et repasse en ligne. */
   async goOnline() {
-    if (!this.offline || !(await this.reachable())) return false;
+    if (!this.offline || this.autonomous || !(await this.reachable())) return false;
     const { data } = await this.sb.auth.getSession();
     if (!data.session) return false;
     await this.syncOutbox();
@@ -101,7 +118,7 @@ export class SupabaseStore {
   async signOut() {
     // Les questions téléchargées ne restent pas sur l'appareil après une déconnexion.
     await this.clearOffline();
-    try { localStorage.removeItem(LS_SAVED_SB); localStorage.removeItem(LS_FLAGS_SB); } catch { /* */ }
+    try { [LS_SAVED_SB, LS_FLAGS_SB, LS_SAVED_PEND, LS_FLAGS_PEND].forEach(k => localStorage.removeItem(k)); } catch { /* */ }
     try { await this.sb.auth.signOut(); } catch { /* hors ligne */ }
   }
 
@@ -118,7 +135,7 @@ export class SupabaseStore {
       idbSet("user", { id: s.user.id, email: s.user.email })]);
     setOfflineEnabled(true);
   }
-  async clearOffline() { setOfflineEnabled(false); await idbClear(); }
+  async clearOffline() { setOfflineEnabled(false); setAutonomous(false); await idbClear(); }
   async offlineInfo() {
     const c = await idbGet("content"), out = (await idbGet("outbox")) || [];
     return { at: c ? c.at : null, n: c ? c.questions.length : 0, pending: out.length };
@@ -213,7 +230,7 @@ export class SupabaseStore {
       catch (e) { if (!isNetErr(e) || !offlineEnabled()) throw e; this.offline = true; }
     }
     // Hors ligne : mis de côté, envoyé à Supabase au retour de la connexion.
-    const id = crypto.randomUUID(), now = new Date().toISOString();
+    const id = uuid(), now = new Date().toISOString();
     await this._queue({ op: "attempt", attempt: { ...attempt, id, created_at: now },
       answers: answers.map(a => ({ ...a, attempt_id: id, created_at: now })) });
     return id;
@@ -231,7 +248,9 @@ export class SupabaseStore {
   // Quiz sauvegardés (table saved_quizzes, migration v4)
   async listSaved() {
     try {
-      const v = await this._try(() => this._listSaved(), "saved", async () => (await idbGet("saved")) || lsGet(LS_SAVED_SB, []));
+      let v = await this._try(() => this._listSaved(), "saved", async () => (await idbGet("saved")) || lsGet(LS_SAVED_SB, []));
+      const pend = lsGet(LS_SAVED_PEND, []);
+      if (pend.length) v = [...pend, ...v.filter(x => !pend.some(p => p.id === x.id))].sort((a, b) => b.savedAt - a.savedAt);
       lsSet(LS_SAVED_SB, v);
       return v;
     } catch (e) {
@@ -241,13 +260,24 @@ export class SupabaseStore {
   }
   async putSaved(entry) {
     lsSet(LS_SAVED_SB, [entry, ...lsGet(LS_SAVED_SB, []).filter(x => x.id !== entry.id)]);
-    try { await this._savedOp({ op: "putSaved", entry }, () => this._putSaved(entry)); }
-    catch (e) { if (!softErr(e)) throw e; console.warn("quiz sauvegardé sur l'appareil seulement", e); }
+    // La copie de l'appareil est déjà faite : une erreur serveur ne fait plus perdre la sauvegarde.
+    const pend = lsGet(LS_SAVED_PEND, []).filter(x => x.id !== entry.id);
+    try {
+      await this._savedOp({ op: "putSaved", entry }, () => this._withFreshJwt(() => this._putSaved(entry)));
+      lsSet(LS_SAVED_PEND, pend);
+      return null;
+    } catch (e) {
+      console.warn("quiz sauvegardé sur l'appareil seulement", e);
+      if (softErr(e)) return null;
+      lsSet(LS_SAVED_PEND, [entry, ...pend]);
+      return errText(e);
+    }
   }
   async deleteSaved(id) {
     lsSet(LS_SAVED_SB, lsGet(LS_SAVED_SB, []).filter(x => x.id !== id));
+    lsSet(LS_SAVED_PEND, lsGet(LS_SAVED_PEND, []).filter(x => x.id !== id));
     try { await this._savedOp({ op: "delSaved", id }, () => this._deleteSaved(id)); }
-    catch (e) { if (!softErr(e)) throw e; }
+    catch (e) { console.warn(e); }
   }
   async _savedOp(op, net) {
     if (offlineEnabled()) {   // copie locale tenue à jour dans tous les cas
@@ -274,8 +304,10 @@ export class SupabaseStore {
         for (const o of (await idbGet("outbox")) || []) if (o.op === "flag") o.on ? ids.add(o.qid) : ids.delete(o.qid);
         return [...ids];
       });
-      lsSet(LS_FLAGS_SB, v);
-      return v;
+      const pend = lsGet(LS_FLAGS_PEND, {}), ids = new Set(v);
+      for (const [k, on] of Object.entries(pend)) on ? ids.add(Number(k)) : ids.delete(Number(k));
+      lsSet(LS_FLAGS_SB, [...ids]);
+      return [...ids];
     } catch (e) {
       if (softErr(e)) { console.warn("marques : copie locale", e); return lsGet(LS_FLAGS_SB, []); }
       throw e;
@@ -293,8 +325,23 @@ export class SupabaseStore {
   }
   async setFlag(qid, on) {
     const loc = new Set(lsGet(LS_FLAGS_SB, [])); on ? loc.add(qid) : loc.delete(qid); lsSet(LS_FLAGS_SB, [...loc]);
-    try { await this._setFlagRemote(qid, on); }
-    catch (e) { if (!softErr(e)) throw e; console.warn("marque gardée sur l'appareil seulement", e); }
+    const pend = lsGet(LS_FLAGS_PEND, {}); delete pend[qid];
+    try { await this._withFreshJwt(() => this._setFlagRemote(qid, on)); lsSet(LS_FLAGS_PEND, pend); return null; }
+    catch (e) {
+      console.warn("marque gardée sur l'appareil seulement", e);
+      if (softErr(e)) return null;
+      pend[qid] = on; lsSet(LS_FLAGS_PEND, pend);
+      return errText(e);
+    }
+  }
+  /** Jeton expiré (tablette restée en veille) : on renouvelle la session une fois, puis on réessaie. */
+  async _withFreshJwt(fn) {
+    try { return await fn(); }
+    catch (e) {
+      if (!(e && (e.code === "PGRST301" || e.code === "PGRST303" || /jwt/i.test(e.message || "")))) throw e;
+      await this.sb.auth.refreshSession();
+      return fn();
+    }
   }
   async _setFlagRemote(qid, on) {
     if (offlineEnabled()) {
@@ -355,10 +402,13 @@ export class LocalStore {
     if (!res.ok) throw new Error(`Impossible de lire ${this.dataUrl} (HTTP ${res.status}). Configurez Supabase dans js/config.js ou ajoutez le fichier local.`);
     const raw = await res.json();
     // Section « Practice Tests » : fichier facultatif à côté de questions.json
-    try {
-      const r2 = await fetch(this.dataUrl.replace(/[^/]+$/, "practice.json"), { cache: "no-store" });
-      if (r2.ok) raw.push(...await r2.json());
-    } catch { /* pas de section practice en local */ }
+    // Sections facultatives (Practice Tests CISSP, puis banques CCSP), à côté de questions.json
+    for (const f of ["practice.json", "ccsp_guide.json", "ccsp_practice.json"]) {
+      try {
+        const r2 = await fetch(this.dataUrl.replace(/[^/]+$/, f), { cache: "no-store" });
+        if (r2.ok) raw.push(...await r2.json());
+      } catch { /* section absente en local */ }
+    }
     const chapters = raw.map(c => ({ id: c.chapter, title: c.title, title_fr: c.title_fr || null, domain: DOMAIN_OF[c.chapter] ?? null }));
     const questions = [];
     for (const c of raw) for (const q of c.questions) {

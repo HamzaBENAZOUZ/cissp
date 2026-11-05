@@ -1,6 +1,6 @@
 import { SupabaseStore, LocalStore, latestByQuestion } from "./store.js";
 import { t, getLang, setLang, locale } from "./i18n.js";
-import { offlineEnabled, registerSW, unregisterSW } from "./offline.js";
+import { offlineEnabled, registerSW, unregisterSW, autonomous, setAutonomous } from "./offline.js";
 
 /** Vrai dans l'application Android (pont vocal AndroidTTS fourni par l'APK). */
 const IN_APP = !!window.AndroidTTS;
@@ -8,6 +8,9 @@ const IN_APP = !!window.AndroidTTS;
 const CFG = window.CISSP_CONFIG || {};
 const PASS = CFG.PASS_MARK || 70;
 const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
+/* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112)
+   et CCSP (Study Guide 201-210, Practice Tests 301-308). */
+const SECTIONS = ["guide", "practice", "ccsp-guide", "ccsp-practice"];
 
 const app = document.getElementById("app");
 const state = {
@@ -16,7 +19,7 @@ const state = {
   attempts: [], latest: new Map(),
   quiz: null, timer: null, lastResult: null,
   view: "boot", authMode: "login",
-  section: (() => { try { return localStorage.getItem("cissp-section") === "practice" ? "practice" : "guide"; } catch { return "guide"; } })(),
+  section: (() => { try { const v = localStorage.getItem("cissp-section"); return SECTIONS.includes(v) ? v : "guide"; } catch { return "guide"; } })(),
 };
 
 // ------------------------------------------------------------------ utils
@@ -163,21 +166,38 @@ function bindSpeak(list) {
 const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
 const chById = id => state.chapters.find(c => c.id === id);
 
-// ---- Sections : « guide » = Study Guide (chapitres 1-21), « practice » = Official Practice Tests (101-112)
-const secOf = chId => (chId > 100 ? "practice" : "guide");
+// ---- Sections : « guide » = Study Guide CISSP (chapitres 1-21), « practice » = Official Practice Tests CISSP (101-112),
+// « ccsp-guide » = Study Guide CCSP (201-210), « ccsp-practice » = Official Practice Tests CCSP (301-308).
+const secOf = chId => (chId > 300 ? "ccsp-practice" : chId > 200 ? "ccsp-guide" : chId > 100 ? "practice" : "guide");
+const certOf = sec => (String(sec).startsWith("ccsp") ? "ccsp" : "cissp");
+const secCert = () => certOf(state.section);
 const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.section);
 const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === state.section);
-const hasPractice = () => state.chapters.some(c => c.id > 100);
-/** Étiquette courte d'un chapitre : CH_07, PT_D3 (practice, domaine 3), TEST_2 (test complet). */
+const hasSection = sec => state.chapters.some(c => secOf(c.id) === sec);
+const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
+/** Nom d'un domaine, selon la certification (8 domaines CISSP, 6 domaines CCSP). */
+const domainName = (d, cert = secCert()) => t((cert === "ccsp" ? "ccspDomain." : "domain.") + d);
+/** Étiquette courte d'un chapitre : CH_07, PT_D3 (practice, domaine 3), TEST_2 (test complet) ; préfixe CCSP pour le CCSP. */
 function chLabel(id) {
+  if (id > 200) {
+    const c = chById(id), base = id > 300 ? 300 : 200;
+    if (id < 300) return `CCSP CH_${pad(id - base)}`;
+    return c && c.domain ? `CCSP PT_D${c.domain}` : `CCSP TEST_${id - 306}`;
+  }
   if (id <= 100) return `CH_${pad(id)}`;
   const c = chById(id);
   return c && c.domain ? `PT_D${c.domain}` : `TEST_${id - 108}`;
 }
 function setSection(sec) {
+  if (!hasSection(sec)) sec = certOf(sec) === "ccsp" ? (hasSection("ccsp-guide") ? "ccsp-guide" : "ccsp-practice") : "guide";
   state.section = sec;
   try { localStorage.setItem("cissp-section", sec); } catch { /* ignore */ }
   renderHome();
+}
+/** Passe d'une certification à l'autre en gardant le même type de banque (Study Guide / Practice Tests). */
+function setCert(cert) {
+  const kind = state.section.endsWith("practice") ? "practice" : "guide";
+  setSection(cert === "ccsp" ? "ccsp-" + kind : kind);
 }
 
 function toast(msg, kind = "info") {
@@ -211,6 +231,7 @@ function applyStaticTexts() {
   document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === getLang()));
   const badge = document.getElementById("mode-badge");
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
+  if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
 }
 function rerender() {
@@ -322,13 +343,38 @@ async function downloadOffline(btn) {
   renderHome();
 }
 
+/** Interrupteur du mode autonome : ON = l'appli n'utilise plus Internet ni l'authentification. */
+async function toggleAutonomous(btn) {
+  if (autonomous()) {
+    const pending = (await state.store.offlineInfo()).pending;
+    if (!confirm(t("auto.offConfirm", { n: pending }))) return;
+    setAutonomous(false);
+    location.reload();   // redémarre en mode normal : connexion, puis envoi de ce qui a été fait hors ligne
+    return;
+  }
+  if (!confirm(t("auto.onConfirm"))) return;
+  btn.disabled = true;
+  try {
+    if (!state.store.offline) {   // copie fraîche avant de partir
+      await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions });
+    } else if (!offlineEnabled()) throw new Error(t("auto.needDownload"));
+    setAutonomous(true);
+    location.reload();
+  } catch (e) { console.error(e); toast(t("off.fail") + (e.message || e), "err"); btn.disabled = false; }
+}
+
 async function offlinePanel() {
   if (state.store.kind !== "supabase") return "";
   const on = offlineEnabled(), info = on ? await state.store.offlineInfo() : null;
   const status = !on ? t("off.desc")
     : t("off.status", { n: info.n, d: info.at ? fmtDate(info.at) : "?" }) + (info.pending ? " " + t("off.pending", { n: info.pending }) : "");
+  const auto = autonomous();
   return `<section class="panel offline-panel">
-    <div><h3 class="mono">📥 ${esc(t("off.title"))}</h3><p class="muted">${esc(status)}</p></div>
+    <div><h3 class="mono">📥 ${esc(t("off.title"))}</h3><p class="muted">${esc(status)}</p>
+      <div class="auto-row">
+        <button class="switch${auto ? " on" : ""}" id="btn-auto" role="switch" aria-checked="${auto}"><span class="knob"></span><span class="mono">${auto ? "ON" : "OFF"}</span></button>
+        <span><strong>✈️ ${esc(t("auto.title"))}</strong> <span class="muted">${esc(auto ? t("auto.onDesc") : t("auto.offDesc"))}</span></span>
+      </div></div>
     <div class="row">${on
       ? `<button class="btn btn-ghost btn-sm" id="btn-off-dl" ${state.store.offline ? "disabled" : ""}>${esc(t("off.update"))}</button>
          <button class="btn btn-ghost btn-sm" id="btn-off-rm" ${state.store.offline ? "disabled" : ""}>${esc(t("off.remove"))}</button>`
@@ -437,7 +483,10 @@ async function toggleFlag(qid) {
   const on = !state.flags.has(qid);
   on ? state.flags.add(qid) : state.flags.delete(qid);
   paintFlags(qid);
-  try { await state.store.setFlag(qid, on); toast(on ? t("flag.added") : t("flag.removed"), "info"); }
+  try {
+    const err = await state.store.setFlag(qid, on);
+    toast(err ? t("flag.localOnly", { e: err }) : (on ? t("flag.added") : t("flag.removed")), err ? "warn" : "info");
+  }
   catch (e) {
     console.error(e);
     on ? state.flags.delete(qid) : state.flags.add(qid); paintFlags(qid);
@@ -497,8 +546,9 @@ function savedPanel() {
 function renderHome() {
   stopTimer();
   state.view = "home";
-  if (state.section === "practice" && !hasPractice()) state.section = "guide";
-  const sec = state.section;
+  if (!hasSection(state.section)) state.section = "guide";
+  const sec = state.section, cert = certOf(sec), CERT = cert.toUpperCase();
+  const kind = sec.endsWith("practice") ? "practice" : "guide";
   const inSec = q => secOf(q.chapter_id) === sec;
   const SQ = secQuestions(), SC = secChapters();
   const total = SQ.length;
@@ -536,7 +586,7 @@ function renderHome() {
     return `
     <section class="domain">
       <div class="domain-head">
-        <h2><span class="mono accent">D${d}</span> ${esc(t("domain." + d))}</h2>
+        <h2><span class="mono accent">D${d}</span> ${esc(domainName(d, cert))}</h2>
         <button class="btn btn-ghost btn-sm" data-start-domain="${d}">${esc(t("home.domainQuiz", { n: Math.min(dq, 30) }))}</button>
       </div>
       <div class="chapter-grid">${cards}</div>
@@ -546,22 +596,31 @@ function renderHome() {
   const testsBlock = tests.length ? `
     <section class="domain">
       <div class="domain-head"><h2><span class="mono accent">TEST</span> ${esc(t("home.tests"))}</h2></div>
-      <p class="muted small">${esc(t("home.testsDesc"))}</p>
+      <p class="muted small">${esc(t(cert === "ccsp" ? "ccsp.testsDesc" : "home.testsDesc"))}</p>
       <div class="chapter-grid">${tests.map(card).join("")}</div>
     </section>` : "";
-  const tabs = hasPractice() ? `
-    <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
-      ${["guide", "practice"].map(k => `<button class="seg-btn" data-section="${k}" aria-pressed="${k === sec}">${esc(t("sec." + k))}
-        <small class="mono">${state.questions.filter(q => secOf(q.chapter_id) === k).length}</small></button>`).join("")}
+  const nIn = s => state.questions.filter(q => secOf(q.chapter_id) === s).length;
+  const certTabs = hasCcsp() ? `
+    <div class="seg sec-tabs cert-tabs" role="group" aria-label="${esc(t("sec.cert"))}">
+      ${["cissp", "ccsp"].map(k => `<button class="seg-btn mono" data-cert="${k}" aria-pressed="${k === cert}">${k.toUpperCase()}
+        <small class="mono">${nIn(k === "ccsp" ? "ccsp-guide" : "guide") + nIn(k === "ccsp" ? "ccsp-practice" : "practice")}</small></button>`).join("")}
     </div>` : "";
+  const pre = cert === "ccsp" ? "ccsp-" : "";
+  const kinds = ["guide", "practice"].filter(k => hasSection(pre + k));
+  const tabs = certTabs + (kinds.length > 1 ? `
+    <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
+      ${kinds.map(k => `<button class="seg-btn" data-section="${pre + k}" aria-pressed="${pre + k === sec}">${esc(t("sec." + k))}
+        <small class="mono">${nIn(pre + k)}</small></button>`).join("")}
+    </div>` : "");
+  const subKey = cert === "ccsp" ? (kind === "practice" ? "ccsp.subPractice" : "ccsp.sub") : (kind === "practice" ? "home.subPractice" : "home.sub");
 
   const sizes = [25, 50, 100, 125, 150];
   app.innerHTML = `
   <section class="hero">
-    <p class="mono kicker">&gt; root@cissp:~$ ./train --mode=qcm --lang=${getLang()}</p>
-    <h1 class="glitch" data-text="CISSP TRAINING TERMINAL">CISSP TRAINING TERMINAL</h1>
+    <p class="mono kicker">&gt; root@${cert}:~$ ./train --mode=qcm --lang=${getLang()}</p>
+    <h1 class="glitch" data-text="${CERT} TRAINING TERMINAL">${CERT} TRAINING TERMINAL</h1>
     ${tabs}
-    <p class="muted">${esc(sec === "practice" ? t("home.subPractice", { n: total }) : t("home.sub", { n: total, c: SC.length }))}</p>
+    <p class="muted">${esc(t(subKey, { n: total, c: SC.length }))}</p>
     <div class="stats">
       <div class="stat"><span class="stat-val mono">${seen}<small>/${total}</small></span><span class="stat-lbl">${esc(t("home.seen"))}</span></div>
       <div class="stat"><span class="stat-val mono">${seen ? pct(ok, seen) : 0}<small>%</small></span><span class="stat-lbl">${esc(t("home.rate"))}</span></div>
@@ -570,14 +629,15 @@ function renderHome() {
     </div>
   </section>
 
+  <div id="offline-slot"></div>
   <div id="saved-slot">${savedPanel()}</div>
   <section class="panel actions-panel">
     <div class="action">
       <h3 class="mono">${esc(t("home.exam"))}</h3>
-      <p class="muted">${esc(t("home.examDesc"))}</p>
+      <p class="muted">${esc(t(cert === "ccsp" ? "ccsp.examDesc" : "home.examDesc"))}</p>
       <div class="row">
         <select id="exam-size" aria-label="${esc(t("home.nQuestions", { n: "" }))}">
-          ${sizes.map(n => `<option value="${n}" ${n === 100 ? "selected" : ""}>${esc(t("home.nQuestions", { n }))}</option>`).join("")}
+          ${sizes.map(n => `<option value="${n}" ${n === (cert === "ccsp" ? 150 : 100) ? "selected" : ""}>${esc(t("home.nQuestions", { n }))}</option>`).join("")}
         </select>
         <button class="btn btn-primary" id="btn-exam">${esc(t("home.start"))}</button>
       </div>
@@ -598,16 +658,17 @@ function renderHome() {
       <button class="btn btn-ghost" id="btn-history">${esc(t("home.seeHistory"))}</button>
     </div>
   </section>
-  <div id="offline-slot"></div>
 
   ${domainBlocks}
   ${testsBlock}`;
 
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => setSection(b.dataset.section));
+  app.querySelectorAll("[data-cert]").forEach(b => b.onclick = () => setCert(b.dataset.cert));
+  const secPerQ = cert === "ccsp" ? 96 : 72;   // CCSP : 150 questions en 4 h ; CISSP : 72 s par question
   app.querySelectorAll("[data-exam-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.examChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);
-    startQuiz({ mode: "exam", chapter_id: id, lab: { k: "test", id }, questions: qs, feedback: false, timed: qs.length * 72 });
+    startQuiz({ mode: "exam", chapter_id: id, lab: { k: "test", id }, questions: qs, feedback: false, timed: qs.length * secPerQ });
   });
 
   app.querySelectorAll("[data-start-chapter]").forEach(b => b.onclick = () => {
@@ -623,13 +684,13 @@ function renderHome() {
     const d = +b.dataset.startDomain;
     const ids = SC.filter(c => c.domain === d).map(c => c.id);
     const qs = shuffle(state.questions.filter(q => ids.includes(q.chapter_id))).slice(0, 30);
-    startQuiz({ mode: "domain", chapter_id: null, lab: { k: "domain", d }, questions: qs, feedback: true });
+    startQuiz({ mode: "domain", chapter_id: null, lab: { k: "domain", d, c: cert }, questions: qs, feedback: true });
   });
   bindSaved();
   refreshSavedSlot();
   document.getElementById("btn-exam").onclick = () => {
     const n = +document.getElementById("exam-size").value;
-    startQuiz({ mode: "exam", chapter_id: null, lab: { k: "exam", n }, questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * 72 });
+    startQuiz({ mode: "exam", chapter_id: null, lab: { k: "exam", n, c: cert }, questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * secPerQ });
   };
   document.getElementById("btn-mistakes").onclick = () => {
     startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "mistakes" }, questions: shuffle(mistakes(inSec)), feedback: true });
@@ -644,6 +705,8 @@ function renderHome() {
     slot.innerHTML = html;
     const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
     if (dl) dl.onclick = () => downloadOffline(dl);
+    const au = document.getElementById("btn-auto");
+    if (au) au.onclick = () => toggleAutonomous(au);
     if (rm) rm.onclick = async () => {
       if (!confirm(t("off.removeConfirm"))) return;
       await state.store.clearOffline(); await unregisterSW(); toast(t("off.removed"), "info"); renderHome();
@@ -659,8 +722,8 @@ function labelOf(lab) {
     case "test": return t("mode.test", { name: chTitle(chById(lab.id)) });
     case "chapter": return `${chLabel(lab.id)} · ${chTitle(chById(lab.id))}`;
     case "mistakesCh": return t("mode.mistakesCh", { n: chLabel(lab.id) });
-    case "domain": return t("mode.domain", { d: lab.d, name: t("domain." + lab.d) });
-    case "exam": return t("mode.exam", { n: lab.n });
+    case "domain": return (lab.c === "ccsp" ? "CCSP · " : "") + t("mode.domain", { d: lab.d, name: domainName(lab.d, lab.c || "cissp") });
+    case "exam": return (lab.c === "ccsp" ? "CCSP · " : "") + t("mode.exam", { n: lab.n });
     case "mistakes": return t("mode.mistakes");
     case "flagged": return t("mode.flagged");
     case "errorsOf": return t("mode.errorsOf", { label: labelOf(lab.of) });
@@ -682,10 +745,12 @@ function dropSaved(id) {
   return state.store.deleteSaved(id).catch(e => console.error(e));
 }
 let saveTimer = null, savePending = null;
+let savedErrShown = false;
 async function pushSaved(entry) {
   savePending = null;
   try {
-    await state.store.putSaved(entry);
+    const err = await state.store.putSaved(entry);
+    if (err && !savedErrShown) { savedErrShown = true; toast(t("save.localOnly", { e: err }), "warn"); }
     // Au-delà de SAVE_MAX, on supprime les plus anciennes.
     loadSaved().slice(SAVE_MAX).forEach(x => dropSaved(x.id));
     return true;
@@ -707,8 +772,9 @@ async function saveQuiz(silent = false) {
     return;
   }
   clearTimeout(saveTimer);
+  savedErrShown = false;
   const ok = await pushSaved(entry);
-  toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
+  if (!savedErrShown) toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
 }
 // Après une première sauvegarde manuelle, chaque réponse met à jour la sauvegarde automatiquement.
 const autoSave = () => { if (state.quiz && state.quiz.saveId) saveQuiz(true); };
@@ -946,7 +1012,7 @@ function renderHistory() {
     return `<tr><td class="mono">${fmtDate(a.created_at)}</td><td>${esc(t("type." + a.mode))}${a.chapter_id ? ` · ${chLabel(a.chapter_id)}` : ""}</td>
       <td class="mono">${a.correct}/${a.total}</td><td class="mono ${s >= PASS ? "accent" : "danger"}">${s}%</td><td class="mono">${fmtTime(a.duration_s || 0)}</td></tr>`;
   }).join("");
-  const chRows = state.chapters.map(c => {
+  const chRows = state.chapters.filter(c => certOf(secOf(c.id)) === secCert()).map(c => {
     const s = chapterStats(c.id);
     return `<tr><td class="mono">${chLabel(c.id)}</td><td>${esc(chTitle(c))}</td><td class="mono">${s.seen}/${s.total}</td>
       <td class="mono">${s.seen ? pct(s.ok, s.seen) + "%" : "–"}</td><td class="mono">${s.best >= 0 ? s.best + "%" : "–"}</td></tr>`;

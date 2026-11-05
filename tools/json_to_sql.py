@@ -7,6 +7,8 @@ Produit :
   private/seed_questions.sql          Study Guide, tout en un seul fichier
   private/seed_part1.sql .. 3         même contenu en 3 morceaux (chapitres 1-7, 8-14, 15-21)
   private/seed_practice_part1..6.sql  Official Practice Tests (2 chapitres par fichier)
+  private/seed_ccsp_guide.sql         CCSP Study Guide (chapitres 201-210)
+  private/seed_ccsp_practice_part1..4.sql  CCSP Official Practice Tests (2 chapitres par fichier)
 
 Les textes sont encodés en base64 : l'éditeur SQL de Supabase ne peut donc
 pas mal interpréter les apostrophes, $, ;, -- ou autres caractères du livre.
@@ -28,7 +30,11 @@ DOMAIN = {1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3,
           11: 4, 12: 4, 13: 5, 14: 5, 15: 6, 16: 7, 17: 7, 18: 7, 19: 7,
           20: 8, 21: 8,
           # Official Practice Tests : chapitres 101-108 = domaines 1-8, 109-112 = tests complets
-          101: 1, 102: 2, 103: 3, 104: 4, 105: 5, 106: 6, 107: 7, 108: 8}
+          101: 1, 102: 2, 103: 3, 104: 4, 105: 5, 106: 6, 107: 7, 108: 8,
+          # CCSP Study Guide 3e éd. (201-210) -> domaines CCSP 1-6
+          201: 1, 202: 2, 203: 2, 204: 3, 205: 3, 206: 4, 207: 5, 208: 5, 209: 6, 210: 6,
+          # CCSP Official Practice Tests 3e éd. : 301-306 = domaines 1-6, 307-308 = tests complets
+          301: 1, 302: 2, 303: 3, 304: 4, 305: 5, 306: 6}
 
 
 def b64(obj) -> str:
@@ -98,5 +104,28 @@ def main() -> None:
         print(f"{sum(len(c['questions']) for c in pr)} questions Practice Tests -> seed_practice_part1..{len(groups)}.sql")
 
 
+def main_ccsp() -> None:
+    g = OUT / "ccsp_guide.json"
+    if g.exists():
+        data = json.loads(g.read_text(encoding="utf-8"))
+        n = sum(len(c["questions"]) for c in data)
+        (OUT / "seed_ccsp_guide.sql").write_text(
+            build(data, [c["chapter"] for c in data], f"CCSP Study Guide ({n} questions)",
+                  "questions_ccsp_guide_importees", " where chapter_id between 201 and 300"), encoding="utf-8")
+        print(f"{n} questions CCSP Study Guide -> seed_ccsp_guide.sql")
+    p = OUT / "ccsp_practice.json"
+    if p.exists():
+        pr = json.loads(p.read_text(encoding="utf-8"))
+        ids = [c["chapter"] for c in pr]
+        groups = [ids[i:i + 2] for i in range(0, len(ids), 2)]
+        for i, g in enumerate(groups, 1):
+            n = sum(len(c["questions"]) for c in pr if c["chapter"] in g)
+            (OUT / f"seed_ccsp_practice_part{i}.sql").write_text(
+                build(pr, g, f"CCSP Practice Tests, partie {i}/{len(groups)} : chapitres {g[0]}-{g[-1]} ({n} questions)",
+                      "questions_ccsp_practice_importees", " where chapter_id > 300"), encoding="utf-8")
+        print(f"{sum(len(c['questions']) for c in pr)} questions CCSP Practice Tests -> seed_ccsp_practice_part1..{len(groups)}.sql")
+
+
 if __name__ == "__main__":
+    main_ccsp()
     main()

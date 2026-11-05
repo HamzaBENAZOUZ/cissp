@@ -570,10 +570,21 @@ const revOpen = new Map();   // chapitre -> volet affiché
 function revSpeech(r, pane, lang) {
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
   const head = t("rev.pane." + pane, {}, lang);
-  return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head, ...(pane === "sum" ? r.sum[lang] : r[pane][lang])]);
+  return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head, ...(pane === "sum" ? r.sum[lang].map(l => l.replace(/^(## |- )/, "")) : r[pane][lang])]);
 }
 function revPaneHtml(r, pane, lang) {
-  if (pane === "sum") return r.sum[lang].map(p => `<p>${esc(p)}</p>`).join("");
+  if (pane === "sum") {
+    // Lignes « ## » = sous-titre, « - » = puce (regroupées en liste), sinon paragraphe.
+    let html = "", list = [];
+    const flush = () => { if (list.length) { html += `<ul class="rev-list">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`; list = []; } };
+    for (const l of r.sum[lang]) {
+      if (l.startsWith("- ")) { list.push(l.slice(2)); continue; }
+      flush();
+      html += l.startsWith("## ") ? `<h4>${esc(l.slice(3))}</h4>` : `<p>${esc(l)}</p>`;
+    }
+    flush();
+    return html;
+  }
   return `<ul class="rev-list">${r[pane][lang].map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
 }
 function renderRevision() {

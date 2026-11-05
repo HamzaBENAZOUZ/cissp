@@ -37,6 +37,11 @@ export const isNetErr = e => !navigator.onLine || e instanceof TypeError ||
 /** Rejette si la promesse ne se termine pas à temps (utile hors ligne, où certaines requêtes attendent longtemps). */
 export const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 
+// Mode autonome : l'application tourne uniquement sur la copie de l'appareil, sans Internet ni connexion.
+const AUTO = "cissp-autonomous";
+export const autonomous = () => { try { return localStorage.getItem(AUTO) === "1" && offlineEnabled(); } catch { return false; } };
+export const setAutonomous = on => { try { on ? localStorage.setItem(AUTO, "1") : localStorage.removeItem(AUTO); } catch { /* */ } };
+
 // ---- Service worker : met en cache les fichiers du site pour qu'il s'ouvre sans connexion.
 export async function registerSW() {
   if (!("serviceWorker" in navigator)) return false;

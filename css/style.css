@@ -328,7 +328,7 @@ code { font-family: var(--mono); font-size: .85em; }
 .saved-item .row { display: flex; gap: .4rem; }
 
 /* Mode hors ligne */
-.offline-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; margin: -14px 0 30px; }
+.offline-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .8rem; margin: 0 0 1rem; }
 .offline-panel h3 { margin: 0 0 .3rem; }
 .offline-panel p { margin: 0; }
 .offline-panel .row { display: flex; gap: .4rem; flex-wrap: wrap; }
@@ -349,3 +349,13 @@ code { font-family: var(--mono); font-size: .85em; }
 .btn-flagged { border: 1px solid var(--amber); color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .review-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .speak-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Interrupteur du mode autonome */
+.auto-row { display: flex; align-items: flex-start; gap: 12px; margin-top: 12px; }
+.auto-row .muted { display: block; font-size: .88rem; margin-top: 2px; }
+.switch { flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px;
+  border: 1px solid var(--line-2); background: var(--bg-2); color: var(--muted, inherit); cursor: pointer; font-size: .8rem; }
+.switch .knob { width: 22px; height: 22px; border-radius: 50%; background: var(--line-2); transition: background .2s; }
+.switch.on { flex-direction: row-reverse; padding: 4px 4px 4px 10px; border-color: var(--amber); color: var(--amber); }
+.switch.on .knob { background: var(--amber); }
+.switch:disabled { opacity: .5; cursor: wait; }

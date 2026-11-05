@@ -15,7 +15,7 @@ const DICT = {
     "top.local": "MODE LOCAL",
     "top.theme": "Basculer thème clair / sombre",
     "top.lang": "Langue",
-    "footer.src": "Questions : CISSP Official Study Guide 10e éd., CCSP Official Study Guide 3e éd. et Practice Tests (usage personnel)",
+    "footer.src": "Questions : CISSP Official Study Guide 10e éd. et Official Practice Tests 4e éd. (usage personnel)",
     "footer.keys": "Raccourcis : A–K choisir · Entrée valider / suivante · M marquer",
 
     "auth.required": "authentification requise",
@@ -214,7 +214,7 @@ const DICT = {
     "top.local": "LOCAL MODE",
     "top.theme": "Toggle light / dark theme",
     "top.lang": "Language",
-    "footer.src": "Questions: CISSP Official Study Guide 10th ed., CCSP Official Study Guide 3rd ed. and Practice Tests (personal use)",
+    "footer.src": "Questions: CISSP Official Study Guide 10th ed. and Official Practice Tests 4th ed. (personal use)",
     "footer.keys": "Shortcuts: A–K select · Enter check / next · M mark",
 
     "auth.required": "authentication required",

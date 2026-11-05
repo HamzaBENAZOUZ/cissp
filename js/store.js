@@ -199,8 +199,9 @@ export class SupabaseStore {
   }
   async _loadContent() {
     const [ch, qs] = await Promise.all([
-      this.sb.from("chapters").select("*").order("id"),
-      fetchAll(() => this.sb.from("questions").select("*").order("chapter_id").order("number")),
+      // Sans les chapitres CCSP (201-399, site https://hamzabenazouz.github.io/ccsp/).
+      this.sb.from("chapters").select("*").or("id.lte.200,id.gte.400").order("id"),
+      fetchAll(() => this.sb.from("questions").select("*").or("chapter_id.lte.200,chapter_id.gte.400").order("chapter_id").order("number")),
     ]);
     if (ch.error) throw ch.error;
     return { chapters: ch.data, questions: qs };
@@ -224,7 +225,7 @@ export class SupabaseStore {
   }
   _answers() {
     return fetchAll(() => this.sb.from("answers")
-      .select("question_id,is_correct,created_at").order("created_at", { ascending: false }));
+      .select("question_id,is_correct,created_at,attempt_id").order("created_at", { ascending: false }));
   }
   async saveAttempt(attempt, answers) {
     if (!this.offline) {
@@ -373,10 +374,12 @@ export class SupabaseStore {
     const { error } = await this.sb.from("saved_quizzes").delete().eq("id", id);
     if (error) throw error;
   }
-  async resetProgress() {
-    const s = await this.session();
-    const { error } = await this.sb.from("attempts").delete().eq("user_id", s.user.id);
-    if (error) throw error;
+  /** Efface seulement les sessions CISSP (ids donnés) : la progression CCSP de la même base est gardée. */
+  async resetProgress(ids = []) {
+    for (let i = 0; i < ids.length; i += 100) {
+      const { error } = await this.sb.from("attempts").delete().in("id", ids.slice(i, i + 100));
+      if (error) throw error;
+    }
   }
 }
 
@@ -405,7 +408,7 @@ export class LocalStore {
     const raw = await res.json();
     // Section « Practice Tests » : fichier facultatif à côté de questions.json
     // Sections facultatives (Practice Tests CISSP, puis banques CCSP), à côté de questions.json
-    for (const f of ["practice.json", "lastmile.json", "ccsp_guide.json", "ccsp_practice.json"]) {
+    for (const f of ["practice.json", "lastmile.json"]) {
       try {
         const r2 = await fetch(this.dataUrl.replace(/[^/]+$/, f), { cache: "no-store" });
         if (r2.ok) raw.push(...await r2.json());

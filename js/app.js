@@ -76,7 +76,9 @@ function answerSpeech(q, lang = "en") {
   const ans = q.correct.map(L => `${L}${lang === "fr" ? " :" : ":"} ${x.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
   const head = lang === "fr" ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse")
     : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
-  return `${head}. ${ans}. ${x.explanation}`;
+  const qhead = lang === "fr" ? "Question" : "Question";
+  // Ordre de lecture : la question, puis la bonne réponse, puis l'explication.
+  return `${qhead}. ${x.question}. ${head}. ${ans}. ${x.explanation}`;
 }
 /* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
    sinon une autre voix neuronale fr-FR, puis toute voix fr-FR, puis toute voix française. */
@@ -120,11 +122,13 @@ function speakAnswer(q, btn, lang = "en") {
   u.onend = u.onerror = done;
   speechSynthesis.speak(u);
 }
-/** Bouton « Écouter (EN) », plus « Lire (FR) » quand la question est affichée en français. */
-const speakBtn = (q, shown = "en") => !canSpeak ? "" :
-  `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="en" lang="${getLang()}" title="${esc(t("quiz.listenTitle"))}">🔊 ${esc(t("quiz.listen"))}</button>`
-  + (shown === "fr" && hasFr(q) && canSpeakFr
-    ? ` <button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="fr" lang="fr" title="${esc(t("quiz.listenFrTitle"))}">🔊 ${esc(t("quiz.listenFr"))}</button>` : "");
+/** Un seul bouton, dans la langue affichée : « Lire » si la question est en français, « Listen » si elle est en anglais. */
+const speakBtn = (q, shown = "en") => {
+  if (!canSpeak) return "";
+  if (shown === "fr" && hasFr(q) && canSpeakFr)
+    return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="fr" lang="fr" title="Lire à voix haute la question, la bonne réponse et l'explication (cliquer à nouveau pour arrêter)">🔊 Lire</button>`;
+  return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="en" lang="en" title="Read the question, the correct answer and the explanation aloud (click again to stop)">🔊 Listen</button>`;
+};
 function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();

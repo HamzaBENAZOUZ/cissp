@@ -348,3 +348,4 @@ code { font-family: var(--mono); font-size: .85em; }
 .btn.btn-flag.on { border-color: var(--amber); color: var(--amber); }
 .btn-flagged { border: 1px solid var(--amber); color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
 .review-tools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.speak-row { display: flex; gap: 6px; flex-wrap: wrap; }

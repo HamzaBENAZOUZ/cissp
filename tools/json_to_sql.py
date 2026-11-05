@@ -34,7 +34,9 @@ DOMAIN = {1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3,
           # CCSP Study Guide 3e éd. (201-210) -> domaines CCSP 1-6
           201: 1, 202: 2, 203: 2, 204: 3, 205: 3, 206: 4, 207: 5, 208: 5, 209: 6, 210: 6,
           # CCSP Official Practice Tests 3e éd. : 301-306 = domaines 1-6, 307-308 = tests complets
-          301: 1, 302: 2, 303: 3, 304: 4, 305: 5, 306: 6}
+          301: 1, 302: 2, 303: 3, 304: 4, 305: 5, 306: 6,
+          # « CISSP: The Last Mile » (QCM originaux) : 401-408 = domaines 1-8
+          401: 1, 402: 2, 403: 3, 404: 4, 405: 5, 406: 6, 407: 7, 408: 8}
 
 
 def b64(obj) -> str:
@@ -126,6 +128,19 @@ def main_ccsp() -> None:
         print(f"{sum(len(c['questions']) for c in pr)} questions CCSP Practice Tests -> seed_ccsp_practice_part1..{len(groups)}.sql")
 
 
+def main_lastmile() -> None:
+    p = OUT / "lastmile.json"
+    if not p.exists():
+        return
+    data = json.loads(p.read_text(encoding="utf-8"))
+    n = sum(len(c["questions"]) for c in data)
+    (OUT / "seed_lastmile.sql").write_text(
+        build(data, [c["chapter"] for c in data], f"CISSP Last Mile ({n} questions originales)",
+              "questions_lastmile_importees", " where chapter_id between 401 and 500"), encoding="utf-8")
+    print(f"{n} questions Last Mile -> seed_lastmile.sql")
+
+
 if __name__ == "__main__":
+    main_lastmile()
     main_ccsp()
     main()

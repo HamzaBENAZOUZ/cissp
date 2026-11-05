@@ -600,18 +600,14 @@ function renderHome() {
       <div class="chapter-grid">${tests.map(card).join("")}</div>
     </section>` : "";
   const nIn = s => state.questions.filter(q => secOf(q.chapter_id) === s).length;
-  const certTabs = hasCcsp() ? `
-    <div class="seg sec-tabs cert-tabs" role="group" aria-label="${esc(t("sec.cert"))}">
-      ${["cissp", "ccsp"].map(k => `<button class="seg-btn mono" data-cert="${k}" aria-pressed="${k === cert}">${k.toUpperCase()}
-        <small class="mono">${nIn(k === "ccsp" ? "ccsp-guide" : "guide") + nIn(k === "ccsp" ? "ccsp-practice" : "practice")}</small></button>`).join("")}
-    </div>` : "";
-  const pre = cert === "ccsp" ? "ccsp-" : "";
-  const kinds = ["guide", "practice"].filter(k => hasSection(pre + k));
-  const tabs = certTabs + (kinds.length > 1 ? `
+  // Une seule rangée d'onglets : CISSP / CISSP Practice / CCSP / CCSP Practice (seulement ceux qui ont des questions).
+  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", "ccsp-guide": "CCSP", "ccsp-practice": "CCSP Practice" };
+  const secs = Object.keys(SEC_NAMES).filter(hasSection);
+  const tabs = secs.length > 1 ? `
     <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
-      ${kinds.map(k => `<button class="seg-btn" data-section="${pre + k}" aria-pressed="${pre + k === sec}">${esc(t("sec." + k))}
-        <small class="mono">${nIn(pre + k)}</small></button>`).join("")}
-    </div>` : "");
+      ${secs.map(k => `<button class="seg-btn" data-section="${k}" aria-pressed="${k === sec}">${esc(SEC_NAMES[k])}
+        <small class="mono">${nIn(k)}</small></button>`).join("")}
+    </div>` : "";
   const subKey = cert === "ccsp" ? (kind === "practice" ? "ccsp.subPractice" : "ccsp.sub") : (kind === "practice" ? "home.subPractice" : "home.sub");
 
   const sizes = [25, 50, 100, 125, 150];

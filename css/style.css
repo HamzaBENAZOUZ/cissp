@@ -359,3 +359,5 @@ code { font-family: var(--mono); font-size: .85em; }
 .switch.on { flex-direction: row-reverse; padding: 4px 4px 4px 10px; border-color: var(--amber); color: var(--amber); }
 .switch.on .knob { background: var(--amber); }
 .switch:disabled { opacity: .5; cursor: wait; }
+.sec-tabs { flex-wrap: wrap; max-width: 100%; }
+@media (max-width: 560px) { .sec-tabs .seg-btn { padding: 7px 10px; font-size: .82rem; } }

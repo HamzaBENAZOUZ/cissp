@@ -5,6 +5,16 @@ import { idbGet, idbSet, idbClear, offlineEnabled, setOfflineEnabled, isNetErr, 
 const DOMAIN_OF = {1:1,2:1,3:1,4:1,5:2,6:3,7:3,8:3,9:3,10:3,11:4,12:4,13:5,14:5,15:6,16:7,17:7,18:7,19:7,20:8,21:8,
   101:1,102:2,103:3,104:4,105:5,106:6,107:7,108:8};   // 101-112 : Official Practice Tests (109-112 = tests complets)
 
+// Copie locale des quiz sauvegardés et des marques : ces fonctions marchent même si les tables
+// saved_quizzes (v4) ou flags (v6) n'ont pas encore été créées dans Supabase, ou sans réseau.
+const LS_SAVED_SB = "cissp-saved-quizzes:sb", LS_FLAGS_SB = "cissp-flags:sb";
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } };
+/** Table absente côté Supabase (migration pas encore exécutée). */
+const isMissingTable = e => !!e && (e.code === "42P01" || e.code === "PGRST205" || e.code === "PGRST202" ||
+  /does not exist|could not find the table|schema cache/i.test(e.message || ""));
+const softErr = e => isNetErr(e) || isMissingTable(e);
+
 /** Lit toutes les lignes d'une requête Supabase, par pages de 1000 (limite par défaut de l'API). */
 async function fetchAll(build) {
   const out = [];
@@ -91,14 +101,17 @@ export class SupabaseStore {
   async signOut() {
     // Les questions téléchargées ne restent pas sur l'appareil après une déconnexion.
     await this.clearOffline();
+    try { localStorage.removeItem(LS_SAVED_SB); localStorage.removeItem(LS_FLAGS_SB); } catch { /* */ }
     try { await this.sb.auth.signOut(); } catch { /* hors ligne */ }
   }
 
   // ---------------------------------------------------------- hors ligne
   /** Télécharge le contenu et la progression sur l'appareil (IndexedDB). */
   async downloadOffline(content) {
-    const [attempts, answers, saved, flags] = await Promise.all([this._attempts(), this._answers(), this._listSaved(),
-      this._flags().catch(() => [])]);
+    // Les tables facultatives (quiz sauvegardés v4, marques v6) peuvent manquer : le hors-ligne marche quand même.
+    const opt = p => p.catch(e => { console.warn("hors ligne : table facultative indisponible", e); return []; });
+    const [attempts, answers, saved, flags] = await Promise.all([this._attempts(), this._answers(),
+      opt(this._listSaved()), opt(this._flags())]);
     const s = await this.session();
     await idbSet("content", { ...content, at: Date.now() });
     await Promise.all([idbSet("attempts", attempts), idbSet("answers", answers), idbSet("saved", saved), idbSet("flags", flags),
@@ -217,10 +230,25 @@ export class SupabaseStore {
   }
   // Quiz sauvegardés (table saved_quizzes, migration v4)
   async listSaved() {
-    return this._try(() => this._listSaved(), "saved", async () => (await idbGet("saved")) || []);
+    try {
+      const v = await this._try(() => this._listSaved(), "saved", async () => (await idbGet("saved")) || lsGet(LS_SAVED_SB, []));
+      lsSet(LS_SAVED_SB, v);
+      return v;
+    } catch (e) {
+      if (softErr(e)) { console.warn("quiz sauvegardés : copie locale", e); return lsGet(LS_SAVED_SB, []); }
+      throw e;
+    }
   }
-  async putSaved(entry) { return this._savedOp({ op: "putSaved", entry }, () => this._putSaved(entry)); }
-  async deleteSaved(id) { return this._savedOp({ op: "delSaved", id }, () => this._deleteSaved(id)); }
+  async putSaved(entry) {
+    lsSet(LS_SAVED_SB, [entry, ...lsGet(LS_SAVED_SB, []).filter(x => x.id !== entry.id)]);
+    try { await this._savedOp({ op: "putSaved", entry }, () => this._putSaved(entry)); }
+    catch (e) { if (!softErr(e)) throw e; console.warn("quiz sauvegardé sur l'appareil seulement", e); }
+  }
+  async deleteSaved(id) {
+    lsSet(LS_SAVED_SB, lsGet(LS_SAVED_SB, []).filter(x => x.id !== id));
+    try { await this._savedOp({ op: "delSaved", id }, () => this._deleteSaved(id)); }
+    catch (e) { if (!softErr(e)) throw e; }
+  }
   async _savedOp(op, net) {
     if (offlineEnabled()) {   // copie locale tenue à jour dans tous les cas
       let list = (await idbGet("saved")) || [];
@@ -240,11 +268,18 @@ export class SupabaseStore {
   }
   // Questions marquées « à réviser » (table flags, migration v6)
   async flags() {
-    return this._try(() => this._flags(), "flags", async () => {
-      let ids = new Set((await idbGet("flags")) || []);
-      for (const o of (await idbGet("outbox")) || []) if (o.op === "flag") o.on ? ids.add(o.qid) : ids.delete(o.qid);
-      return [...ids];
-    });
+    try {
+      const v = await this._try(() => this._flags(), "flags", async () => {
+        let ids = new Set((await idbGet("flags")) || lsGet(LS_FLAGS_SB, []));
+        for (const o of (await idbGet("outbox")) || []) if (o.op === "flag") o.on ? ids.add(o.qid) : ids.delete(o.qid);
+        return [...ids];
+      });
+      lsSet(LS_FLAGS_SB, v);
+      return v;
+    } catch (e) {
+      if (softErr(e)) { console.warn("marques : copie locale", e); return lsGet(LS_FLAGS_SB, []); }
+      throw e;
+    }
   }
   async _flags() {
     const { data, error } = await this.sb.from("flags").select("question_id");
@@ -257,6 +292,11 @@ export class SupabaseStore {
     if (r.error) throw r.error;
   }
   async setFlag(qid, on) {
+    const loc = new Set(lsGet(LS_FLAGS_SB, [])); on ? loc.add(qid) : loc.delete(qid); lsSet(LS_FLAGS_SB, [...loc]);
+    try { await this._setFlagRemote(qid, on); }
+    catch (e) { if (!softErr(e)) throw e; console.warn("marque gardée sur l'appareil seulement", e); }
+  }
+  async _setFlagRemote(qid, on) {
     if (offlineEnabled()) {
       const ids = new Set((await idbGet("flags")) || []);
       on ? ids.add(qid) : ids.delete(qid);

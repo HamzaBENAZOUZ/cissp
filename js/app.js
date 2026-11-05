@@ -65,16 +65,27 @@ function qText(q, lang = getLang()) {
 }
 const hasFr = q => !!q.question_fr;
 
-/* Lecture à voix haute (anglais uniquement) via l'API Web Speech du navigateur. */
+/* Lecture à voix haute (anglais, et français quand la question est affichée en français) via l'API Web Speech. */
 // Dans l'application Android, la WebView ne parle pas : on passe par le moteur vocal du téléphone (pont AndroidTTS).
 const nativeTTS = window.AndroidTTS || null;
 const canSpeak = !!nativeTTS || ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
 let speakingId = null;
 function stopSpeak() { if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
-function answerSpeech(q) {
-  const en = qText(q, "en");
-  const ans = q.correct.map(L => `${L}: ${en.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
-  return `Correct answer${q.correct.length > 1 ? "s" : ""}. ${ans}. ${en.explanation}`;
+function answerSpeech(q, lang = "en") {
+  const x = qText(q, lang);
+  const ans = q.correct.map(L => `${L}${lang === "fr" ? " :" : ":"} ${x.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
+  const head = lang === "fr" ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse")
+    : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
+  return `${head}. ${ans}. ${x.explanation}`;
+}
+/* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
+   sinon une autre voix neuronale fr-FR, puis toute voix fr-FR, puis toute voix française. */
+function pickVoiceFr() {
+  const vs = speechSynthesis.getVoices();
+  const fr = vs.filter(v => /^fr[-_]FR$/i.test(v.lang));
+  return fr.find(v => /\bDenise\b/i.test(v.name) && /Natural/i.test(v.name))
+    || fr.find(v => /Natural|Online/i.test(v.name))
+    || fr[0] || vs.find(v => /^fr/i.test(v.lang)) || null;
 }
 /* Voix préférée : « Microsoft Aria Online (Natural) - English (United States) » (voix neuronale native d'Edge),
    sinon n'importe quelle voix Aria en-US, puis une voix « Natural » en-US, puis toute voix en-US, puis anglais. */
@@ -87,29 +98,37 @@ function pickVoice() {
     || us[0] || vs.find(v => /^en/i.test(v.lang)) || null;
 }
 if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
-function speakAnswer(q, btn) {
+// Lecture en français : navigateur, ou application Android 2.3+ (pont speakLang).
+const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "function");
+function speakAnswer(q, btn, lang = "en") {
   if (!canSpeak) return;
-  if (speakingId === q.id) { stopSpeak(); return; }
+  const key = q.id + ":" + lang;
+  if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
+  const text = answerSpeech(q, lang);
+  const done = () => { if (speakingId === key) { speakingId = null; btn.classList.remove("on"); } };
+  speakingId = key; btn.classList.add("on");
   if (nativeTTS) {
-    speakingId = q.id; btn.classList.add("on");
-    window.__ttsDone = () => { if (speakingId === q.id) { speakingId = null; btn.classList.remove("on"); } };
-    nativeTTS.speak(answerSpeech(q));
+    window.__ttsDone = done;
+    if (lang === "fr") nativeTTS.speakLang(text, "fr-FR"); else nativeTTS.speak(text);
     return;
   }
-  const u = new SpeechSynthesisUtterance(answerSpeech(q));
-  u.lang = "en-US"; u.rate = 1;
-  const v = pickVoice();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === "fr" ? "fr-FR" : "en-US"; u.rate = 1;
+  const v = lang === "fr" ? pickVoiceFr() : pickVoice();
   if (v) u.voice = v;
-  u.onend = u.onerror = () => { if (speakingId === q.id) { speakingId = null; btn.classList.remove("on"); } };
-  speakingId = q.id; btn.classList.add("on");
+  u.onend = u.onerror = done;
   speechSynthesis.speak(u);
 }
-const speakBtn = q => canSpeak ? `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" lang="${getLang()}" title="${esc(t("quiz.listenTitle"))}">🔊 ${esc(t("quiz.listen"))}</button>` : "";
+/** Bouton « Écouter (EN) », plus « Lire (FR) » quand la question est affichée en français. */
+const speakBtn = (q, shown = "en") => !canSpeak ? "" :
+  `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="en" lang="${getLang()}" title="${esc(t("quiz.listenTitle"))}">🔊 ${esc(t("quiz.listen"))}</button>`
+  + (shown === "fr" && hasFr(q) && canSpeakFr
+    ? ` <button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="fr" lang="fr" title="${esc(t("quiz.listenFrTitle"))}">🔊 ${esc(t("quiz.listenFr"))}</button>` : "");
 function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
-    const q = list.find(x => String(x.id) === b.dataset.speak); if (q) speakAnswer(q, b);
+    const q = list.find(x => String(x.id) === b.dataset.speak); if (q) speakAnswer(q, b, b.dataset.speaklang || "en");
   });
 }
 const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
@@ -238,7 +257,7 @@ async function start() {
     if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
       state.store.downloadOffline({ chapters, questions })
         .then(() => { toast(t("off.done", { n: questions.length }), "ok"); if (state.view === "home") renderHome(); })
-        .catch(e => console.error(e));
+        .catch(e => { console.error(e); toast(t("off.fail") + (e.message || e), "err"); });
     }
     route();
   } catch (e) {
@@ -412,6 +431,24 @@ function mistakes(filter = () => true) {
 }
 
 // ------------------------------------------------------------------ home
+function bindSaved() {
+  app.querySelectorAll("[data-resume]").forEach(b => b.onclick = () => resumeQuiz(b.dataset.resume));
+  app.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => {
+    if (confirm(t("save.dropConfirm"))) { dropSaved(b.dataset.drop); renderHome(); }
+  });
+}
+/** Relit les quiz sauvegardés (ex. sauvegardés sur un autre appareil) et met à jour le bloc de l'accueil. */
+async function refreshSavedSlot() {
+  const before = JSON.stringify(loadSaved());
+  await refreshSaved();
+  const slot = document.getElementById("saved-slot");
+  if (!slot || state.view !== "home" || JSON.stringify(loadSaved()) === before) return;
+  slot.innerHTML = savedPanel(); bindSaved();
+}
+// Application Android revenue au premier plan : on relit les sauvegardes faites ailleurs.
+window.__appResume = () => { if (state.view === "home" && state.session) refreshSavedSlot(); };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") window.__appResume(); });
+
 function savedPanel() {
   const list = loadSaved();
   if (!list.length) return "";
@@ -504,7 +541,7 @@ function renderHome() {
     </div>
   </section>
 
-  ${savedPanel()}
+  <div id="saved-slot">${savedPanel()}</div>
   <section class="panel actions-panel">
     <div class="action">
       <h3 class="mono">${esc(t("home.exam"))}</h3>
@@ -559,10 +596,8 @@ function renderHome() {
     const qs = shuffle(state.questions.filter(q => ids.includes(q.chapter_id))).slice(0, 30);
     startQuiz({ mode: "domain", chapter_id: null, lab: { k: "domain", d }, questions: qs, feedback: true });
   });
-  app.querySelectorAll("[data-resume]").forEach(b => b.onclick = () => resumeQuiz(b.dataset.resume));
-  app.querySelectorAll("[data-drop]").forEach(b => b.onclick = () => {
-    if (confirm(t("save.dropConfirm"))) { dropSaved(b.dataset.drop); renderHome(); }
-  });
+  bindSaved();
+  refreshSavedSlot();
   document.getElementById("btn-exam").onclick = () => {
     const n = +document.getElementById("exam-size").value;
     startQuiz({ mode: "exam", chapter_id: null, lab: { k: "exam", n }, questions: shuffle(SQ).slice(0, n), feedback: false, timed: n * 72 });
@@ -744,7 +779,7 @@ function renderQuiz() {
       <ol class="opts">${opts}</ol>
       ${checked ? `
       <div class="explain ${isOk ? "ok" : "ko"}">
-        <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p>${speakBtn(q)}</div>
+        <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p><div class="speak-row">${speakBtn(q, txt.lang)}</div></div>
         <p>${esc(txt.explanation)}</p>
       </div>` : ""}
     </article>
@@ -845,7 +880,7 @@ function renderResults() {
         return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
       <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
-      <div class="review-tools">${speakBtn(d.q)} ${flagBtn(d.q)}</div>
+      <div class="review-tools">${speakBtn(d.q, txt.lang)} ${flagBtn(d.q)}</div>
     </details>`;
   }).join("");
 

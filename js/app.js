@@ -1,6 +1,7 @@
 import { SupabaseStore, LocalStore, latestByQuestion } from "./store.js";
 import { t, getLang, setLang, locale } from "./i18n.js";
 import { offlineEnabled, registerSW, unregisterSW, autonomous, setAutonomous } from "./offline.js";
+import { REVISION } from "./revision.js";
 
 /** Vrai dans l'application Android (pont vocal AndroidTTS fourni par l'APK). */
 const IN_APP = !!window.AndroidTTS;
@@ -10,7 +11,7 @@ const PASS = CFG.PASS_MARK || 70;
 const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 /* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112)
    et CCSP (Study Guide 201-210, Practice Tests 301-308). */
-const SECTIONS = ["guide", "practice", "lastmile", "ccsp-guide", "ccsp-practice"];
+const SECTIONS = ["guide", "practice", "lastmile", "revision", "ccsp-guide", "ccsp-practice"];
 
 const app = document.getElementById("app");
 const state = {
@@ -117,11 +118,13 @@ if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste 
 // Lecture en français : navigateur, ou application Android 2.3+ (pont speakLang).
 const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "function");
 function speakAnswer(q, btn, lang = "en", mode = "all") {
+  speakText(q.id + ":" + lang + ":" + mode, answerSpeech(q, lang, mode), lang, btn);
+}
+/** Lit un texte (anglais ou français) ; un second clic sur le même bouton arrête la lecture. */
+function speakText(key, text, lang, btn) {
   if (!canSpeak) return;
-  const key = q.id + ":" + lang + ":" + mode;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  const text = answerSpeech(q, lang, mode);
   const done = () => { if (speakingId === key) { speakingId = null; btn.classList.remove("on"); } };
   speakingId = key; btn.classList.add("on");
   if (nativeTTS) {
@@ -174,7 +177,8 @@ const certOf = sec => (String(sec).startsWith("ccsp") ? "ccsp" : "cissp");
 const secCert = () => certOf(state.section);
 const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.section);
 const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === state.section);
-const hasSection = sec => state.chapters.some(c => secOf(c.id) === sec);
+// « revision » : fiches de révision (js/revision.js), sans questions ; visible dès que le CISSP est chargé.
+const hasSection = sec => sec === "revision" ? state.chapters.some(c => c.id <= 100) : state.chapters.some(c => secOf(c.id) === sec);
 const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
 /** Nom d'un domaine, selon la certification (8 domaines CISSP, 6 domaines CCSP). */
 const domainName = (d, cert = secCert()) => t((cert === "ccsp" ? "ccspDomain." : "domain.") + d);
@@ -545,10 +549,95 @@ function savedPanel() {
     }).join("")}</ul></section>`;
 }
 
+/** Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / Révision CISSP / CCSP / CCSP Practice
+ *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
+function secTabs(sec) {
+  const nIn = s => s === "revision" ? REVISION.length : state.questions.filter(q => secOf(q.chapter_id) === s).length;
+  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", revision: t("rev.tab"),
+    "ccsp-guide": "CCSP", "ccsp-practice": "CCSP Practice" };
+  const secs = Object.keys(SEC_NAMES).filter(hasSection);
+  return secs.length > 1 ? `
+    <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
+      ${secs.map(k => `<button class="seg-btn" data-section="${k}" aria-pressed="${k === sec}">${esc(SEC_NAMES[k])}
+        <small class="mono">${nIn(k)}</small></button>`).join("")}
+    </div>` : "";
+}
+
+/* ---- Onglet « Révision CISSP » : une fiche par chapitre du Study Guide (résumé, préparer l'examen, à mémoriser),
+   avec « Listen » (lecture en anglais) et, quand le site est en français, « Lire » (lecture en français). */
+const REV_PANES = ["sum", "tips", "mem"];
+const revOpen = new Map();   // chapitre -> volet affiché
+function revSpeech(r, pane, lang) {
+  const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
+  const head = t("rev.pane." + pane, {}, lang);
+  return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head, ...(pane === "sum" ? r.sum[lang] : r[pane][lang])]);
+}
+function revPaneHtml(r, pane, lang) {
+  if (pane === "sum") return r.sum[lang].map(p => `<p>${esc(p)}</p>`).join("");
+  return `<ul class="rev-list">${r[pane][lang].map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+}
+function renderRevision() {
+  const lang = getLang(), sec = "revision";
+  const card = r => {
+    const c = chById(r.id), pane = revOpen.get(r.id) || "sum";
+    return `
+    <details class="rev-card" data-rev="${r.id}" ${revOpen.has(r.id) ? "open" : ""}>
+      <summary><span class="ch-num mono">${chLabel(r.id)}</span> <span class="ch-title">${esc(chTitle(c) || "")}</span></summary>
+      <div class="rev-body">
+        <div class="rev-tools">
+          <div class="seg rev-panes" role="group">
+            ${REV_PANES.map(p => `<button class="seg-btn" data-revpane="${p}" aria-pressed="${p === pane}">${esc(t("rev.pane." + p))}</button>`).join("")}
+          </div>
+          <div class="row rev-speak">
+            ${canSpeak ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="en" lang="en" title="Read this sheet aloud in English (click again to stop)">🔊 Listen</button>` : ""}
+            ${canSpeakFr && lang === "fr" ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="fr" lang="fr" title="Lire cette fiche en français (cliquer à nouveau pour arrêter)">🔊 Lire</button>` : ""}
+          </div>
+        </div>
+        <div class="rev-pane">${revPaneHtml(r, pane, lang)}</div>
+      </div>
+    </details>`;
+  };
+  const blocks = DOMAIN_IDS.map(d => {
+    const rs = REVISION.filter(r => (chById(r.id) || {}).domain === d);
+    if (!rs.length) return "";
+    return `<section class="domain"><div class="domain-head"><h2><span class="mono accent">D${d}</span> ${esc(domainName(d, "cissp"))}</h2></div>
+      <div class="rev-grid">${rs.map(card).join("")}</div></section>`;
+  }).join("");
+  app.innerHTML = `
+  <section class="hero">
+    <p class="mono kicker">&gt; root@cissp:~$ ./review --lang=${lang}</p>
+    <h1 class="glitch" data-text="CISSP REVIEW">CISSP REVIEW</h1>
+    ${secTabs(sec)}
+    <p class="muted">${esc(t("rev.sub", { n: REVISION.length }))}</p>
+    <div class="row"><button class="btn btn-ghost btn-sm" id="rev-open-all">${esc(t("rev.openAll"))}</button>
+      <button class="btn btn-ghost btn-sm" id="rev-close-all">${esc(t("rev.closeAll"))}</button></div>
+  </section>
+  ${blocks}`;
+  app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => { stopSpeak(); setSection(b.dataset.section); });
+  app.querySelectorAll(".rev-card").forEach(d => {
+    const id = +d.dataset.rev, r = REVISION.find(x => x.id === id);
+    d.addEventListener("toggle", () => { if (d.open) { if (!revOpen.has(id)) revOpen.set(id, "sum"); } else revOpen.delete(id); });
+    d.querySelectorAll("[data-revpane]").forEach(b => b.onclick = () => {
+      const pane = b.dataset.revpane; revOpen.set(id, pane); stopSpeak();
+      d.querySelectorAll("[data-revpane]").forEach(x => x.setAttribute("aria-pressed", x === b));
+      d.querySelector(".rev-pane").innerHTML = revPaneHtml(r, pane, getLang());
+    });
+    d.querySelectorAll("[data-revspeak]").forEach(b => b.onclick = e => {
+      e.preventDefault();
+      const l = b.dataset.revspeak, pane = revOpen.get(id) || "sum";
+      speakText(`rev:${id}:${pane}:${l}`, revSpeech(r, pane, l), l, b);
+    });
+  });
+  const all = open => () => app.querySelectorAll(".rev-card").forEach(d => { d.open = open; });
+  document.getElementById("rev-open-all").onclick = all(true);
+  document.getElementById("rev-close-all").onclick = all(false);
+}
+
 function renderHome() {
   stopTimer();
   state.view = "home";
   if (!hasSection(state.section)) state.section = "guide";
+  if (state.section === "revision") { renderRevision(); return; }
   const sec = state.section, cert = certOf(sec), CERT = cert.toUpperCase();
   const kind = sec.endsWith("practice") ? "practice" : "guide";
   const inSec = q => secOf(q.chapter_id) === sec;
@@ -601,15 +690,7 @@ function renderHome() {
       <p class="muted small">${esc(t(cert === "ccsp" ? "ccsp.testsDesc" : "home.testsDesc"))}</p>
       <div class="chapter-grid">${tests.map(card).join("")}</div>
     </section>` : "";
-  const nIn = s => state.questions.filter(q => secOf(q.chapter_id) === s).length;
-  // Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / CCSP / CCSP Practice (seulement ceux qui ont des questions).
-  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", "ccsp-guide": "CCSP", "ccsp-practice": "CCSP Practice" };
-  const secs = Object.keys(SEC_NAMES).filter(hasSection);
-  const tabs = secs.length > 1 ? `
-    <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
-      ${secs.map(k => `<button class="seg-btn" data-section="${k}" aria-pressed="${k === sec}">${esc(SEC_NAMES[k])}
-        <small class="mono">${nIn(k)}</small></button>`).join("")}
-    </div>` : "";
+  const tabs = secTabs(sec);
   const subKey = sec === "lastmile" ? "lm.sub" : cert === "ccsp" ? (kind === "practice" ? "ccsp.subPractice" : "ccsp.sub") : (kind === "practice" ? "home.subPractice" : "home.sub");
 
   const sizes = [25, 50, 100, 125, 150];

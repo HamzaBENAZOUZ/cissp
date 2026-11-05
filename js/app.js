@@ -9,9 +9,11 @@ const IN_APP = !!window.AndroidTTS;
 const CFG = window.CISSP_CONFIG || {};
 const PASS = CFG.PASS_MARK || 70;
 const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
-/* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112)
-   et CCSP (Study Guide 201-210, Practice Tests 301-308). */
-const SECTIONS = ["guide", "practice", "lastmile", "revision", "ccsp-guide", "ccsp-practice"];
+/* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112, Last Mile 401-408).
+   Le CCSP (chapitres 201-210 et 301-308, même base Supabase) a son propre site : https://hamzabenazouz.github.io/ccsp/ */
+const SECTIONS = ["guide", "practice", "lastmile", "revision"];
+/** Chapitres de ce site (les chapitres CCSP 201-399 sont ignorés). */
+const isOwnChapter = id => id <= 200 || id >= 400;
 
 const app = document.getElementById("app");
 const state = {
@@ -299,8 +301,8 @@ async function start() {
   app.innerHTML = `<div class="boot"><p class="mono">&gt; ${esc(t("boot.load"))}<span class="cursor">_</span></p></div>`;
   try {
     const { chapters, questions } = await state.store.loadContent();
-    state.chapters = chapters;
-    state.questions = questions;
+    state.chapters = chapters.filter(c => isOwnChapter(c.id));
+    state.questions = questions.filter(q => isOwnChapter(q.chapter_id));
     state.byId = new Map(questions.map(q => [q.id, q]));
     if (!questions.length) throw new Error(t("err.noQuestions"));
     if (state.store.syncOutbox && !state.store.offline) {   // envoie ce qui a été fait hors ligne la dernière fois
@@ -389,10 +391,14 @@ async function offlinePanel() {
 }
 
 async function refreshProgress() {
-  const [attempts, answers] = await Promise.all([state.store.attempts(), state.store.answers()]);
-  state.attempts = attempts;
+  const [attempts, allAnswers] = await Promise.all([state.store.attempts(), state.store.answers()]);
+  // Base partagée avec le site CCSP : on ne garde que les réponses et sessions qui portent sur des questions CISSP.
+  const own = new Set(state.questions.map(q => q.id));
+  const answers = allAnswers.filter(a => own.has(a.question_id));
+  const ownAtt = new Set(answers.map(a => a.attempt_id).filter(Boolean));
+  state.attempts = attempts.filter(a => (a.chapter_id ? isOwnChapter(a.chapter_id) : ownAtt.has(a.id)));
   state.latest = latestByQuestion(answers);
-  try { state.flags = new Set(await state.store.flags()); }
+  try { state.flags = new Set((await state.store.flags()).filter(id => own.has(id))); }
   catch (e) { console.warn("flags", e); state.flags = state.flags || new Set(); }
   await refreshSaved();
 }
@@ -549,12 +555,12 @@ function savedPanel() {
     }).join("")}</ul></section>`;
 }
 
-/** Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / Révision CISSP / CCSP / CCSP Practice
+/** Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / Révision CISSP
  *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
 function secTabs(sec) {
   const nIn = s => s === "revision" ? REVISION.length : state.questions.filter(q => secOf(q.chapter_id) === s).length;
   const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", revision: t("rev.tab"),
-    "ccsp-guide": "CCSP", "ccsp-practice": "CCSP Practice" };
+  };
   const secs = Object.keys(SEC_NAMES).filter(hasSection);
   return secs.length > 1 ? `
     <div class="seg sec-tabs" role="group" aria-label="${esc(t("sec.label"))}">
@@ -826,7 +832,11 @@ function labelOf(lab) {
 const SAVE_MAX = 10;
 const loadSaved = () => state.saved || [];
 async function refreshSaved() {
-  try { state.saved = (await state.store.listSaved()).slice(0, 20); state.savedErr = null; }
+  try {
+    const own = new Set(state.questions.map(q => q.id));   // quiz sauvegardés du site CCSP : ignorés ici
+    state.saved = (await state.store.listSaved()).filter(x => (x.qids || []).some(id => own.has(id))).slice(0, 20);
+    state.savedErr = null;
+  }
   catch (e) { console.error(e); state.saved = []; state.savedErr = e; }
 }
 function dropSaved(id) {
@@ -1119,7 +1129,7 @@ function renderHistory() {
   document.getElementById("btn-home").onclick = () => go("");
   document.getElementById("btn-reset").onclick = async () => {
     if (!confirm(t("hist.resetConfirm"))) return;
-    try { await state.store.resetProgress(); await refreshProgress(); toast(t("hist.resetDone"), "ok"); renderHistory(); }
+    try { await state.store.resetProgress(state.attempts.map(a => a.id)); await refreshProgress(); toast(t("hist.resetDone"), "ok"); renderHistory(); }
     catch (e) { toast(e.message, "err"); }
   };
 }

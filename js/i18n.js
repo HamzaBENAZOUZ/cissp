@@ -180,6 +180,13 @@ const DICT = {
     "domain.7": "Opérations de sécurité",
     "domain.8": "Sécurité du développement logiciel",
     "sec.cert": "Choix de la certification",
+    "rev.tab": "Révision CISSP",
+    "rev.sub": "{n} fiches, une par chapitre du Study Guide : un résumé complet, comment se préparer à l'examen et les points à mémoriser. « Listen » lit la fiche en anglais, « Lire » en français.",
+    "rev.openAll": "Tout déplier",
+    "rev.closeAll": "Tout replier",
+    "rev.pane.sum": "Résumé",
+    "rev.pane.tips": "Préparer l'examen",
+    "rev.pane.mem": "À mémoriser",
     "lm.sub": "{n} questions originales rédigées d'après « CISSP: The Last Mile » (Pete Zerger), sur les 8 domaines du CBK.",
     "ccsp.sub": "{n} questions de révision du CCSP Official Study Guide (3e éd.) sur {c} chapitres et les 6 domaines du CBK CCSP.",
     "ccsp.subPractice": "{n} questions des CCSP Official Practice Tests (3e éd.) : 6 chapitres par domaine et 2 tests blancs complets.",
@@ -372,6 +379,13 @@ const DICT = {
     "domain.7": "Security Operations",
     "domain.8": "Software Development Security",
     "sec.cert": "Certification",
+    "rev.tab": "CISSP Review",
+    "rev.sub": "{n} study sheets, one per Study Guide chapter: a complete summary, how to prepare for the exam, and what to memorize. \"Listen\" reads the sheet aloud in English.",
+    "rev.openAll": "Expand all",
+    "rev.closeAll": "Collapse all",
+    "rev.pane.sum": "Summary",
+    "rev.pane.tips": "Exam prep",
+    "rev.pane.mem": "Must memorize",
     "lm.sub": "{n} original questions written from \"CISSP: The Last Mile\" (Pete Zerger), across the 8 CBK domains.",
     "ccsp.sub": "{n} review questions from the CCSP Official Study Guide (3rd ed.) across {c} chapters and the 6 CCSP CBK domains.",
     "ccsp.subPractice": "{n} questions from the CCSP Official Practice Tests (3rd ed.): 6 domain chapters and 2 full practice tests.",
@@ -400,8 +414,8 @@ export function setLang(l) {
   document.documentElement.lang = l;
   try { localStorage.setItem(LS_LANG, l); } catch { /* ignore */ }
 }
-export function t(key, vars = {}) {
-  const s = DICT[lang][key] ?? DICT.fr[key] ?? key;
+export function t(key, vars = {}, l = lang) {
+  const s = DICT[l][key] ?? DICT.fr[key] ?? key;
   return s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? `{${k}}`));
 }
 export const locale = () => (lang === "fr" ? "fr-FR" : "en-GB");

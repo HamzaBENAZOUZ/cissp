@@ -361,3 +361,18 @@ code { font-family: var(--mono); font-size: .85em; }
 .switch:disabled { opacity: .5; cursor: wait; }
 .sec-tabs { flex-wrap: wrap; max-width: 100%; }
 @media (max-width: 560px) { .sec-tabs .seg-btn { padding: 7px 10px; font-size: .82rem; } }
+
+/* Onglet « Révision CISSP » */
+.rev-grid { display: grid; gap: .6rem; }
+.rev-card { background: var(--panel, var(--bg-2, #fff)); border: 1px solid var(--line-2); border-radius: 12px; }
+.rev-card > summary { cursor: pointer; padding: .8rem 1rem; display: flex; gap: .6rem; align-items: baseline; list-style: none; }
+.rev-card > summary::-webkit-details-marker { display: none; }
+.rev-card > summary::before { content: "▸"; color: var(--muted); }
+.rev-card[open] > summary::before { content: "▾"; }
+.rev-body { padding: 0 1rem 1rem; }
+.rev-tools { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
+.rev-panes { flex-wrap: wrap; }
+.rev-panes .seg-btn { font-size: .82rem; padding: 6px 12px; }
+.rev-pane p { margin: 0 0 .7rem; line-height: 1.6; }
+.rev-list { margin: 0; padding-left: 1.2rem; line-height: 1.6; }
+.rev-list li { margin-bottom: .35rem; }

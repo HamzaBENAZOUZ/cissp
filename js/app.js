@@ -71,14 +71,25 @@ const nativeTTS = window.AndroidTTS || null;
 const canSpeak = !!nativeTTS || ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
 let speakingId = null;
 function stopSpeak() { if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
-function answerSpeech(q, lang = "en") {
-  const x = qText(q, lang);
-  const ans = q.correct.map(L => `${L}${lang === "fr" ? " :" : ":"} ${x.options[L.charCodeAt(0) - 65] || ""}`).join(". ");
-  const head = lang === "fr" ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse")
-    : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
-  const qhead = lang === "fr" ? "Question" : "Question";
-  // Ordre de lecture : la question, puis la bonne réponse, puis l'explication.
-  return `${qhead}. ${x.question}. ${head}. ${ans}. ${x.explanation}`;
+/**
+ * Texte lu à voix haute.
+ *  - mode "answer"   : la bonne réponse puis l'explication ;
+ *  - mode "question" : la question et ses propositions (avant validation : rien n'est dévoilé) ;
+ *  - mode "all"      : la question, ses propositions, la bonne réponse et l'explication.
+ */
+/** Assemble des morceaux de texte avec un point entre eux, sauf s'ils finissent déjà par une ponctuation. */
+const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).filter(Boolean)
+  .map(x => /[.?!:;…]$/.test(x) ? x : x + ".").join(" ");
+function answerSpeech(q, lang = "en", mode = "all") {
+  const x = qText(q, lang), fr = lang === "fr";
+  const opt = L => `${L}${fr ? " :" : ":"} ${x.options[L.charCodeAt(0) - 65] || ""}`;
+  const letters = x.options.map((_, i) => String.fromCharCode(65 + i));
+  const question = joinSpeech(["Question", x.scenario, x.question, ...letters.map(opt)]);
+  const head = fr ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
+  const answer = joinSpeech([head, ...q.correct.map(opt), x.explanation]);
+  if (mode === "question") return question;
+  if (mode === "answer") return answer;
+  return `${question} ${answer}`;
 }
 /* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
    sinon une autre voix neuronale fr-FR, puis toute voix fr-FR, puis toute voix française. */
@@ -102,12 +113,12 @@ function pickVoice() {
 if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
 // Lecture en français : navigateur, ou application Android 2.3+ (pont speakLang).
 const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "function");
-function speakAnswer(q, btn, lang = "en") {
+function speakAnswer(q, btn, lang = "en", mode = "all") {
   if (!canSpeak) return;
-  const key = q.id + ":" + lang;
+  const key = q.id + ":" + lang + ":" + mode;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  const text = answerSpeech(q, lang);
+  const text = answerSpeech(q, lang, mode);
   const done = () => { if (speakingId === key) { speakingId = null; btn.classList.remove("on"); } };
   speakingId = key; btn.classList.add("on");
   if (nativeTTS) {
@@ -122,17 +133,31 @@ function speakAnswer(q, btn, lang = "en") {
   u.onend = u.onerror = done;
   speechSynthesis.speak(u);
 }
-/** Un seul bouton, dans la langue affichée : « Lire » si la question est en français, « Listen » si elle est en anglais. */
-const speakBtn = (q, shown = "en") => {
+/**
+ * Bouton de lecture, dans la langue affichée (français : « Lire… », anglais : « Listen… »).
+ *  kind "all"    : « Lire tout » à côté de la question (question + propositions, puis réponse et explication
+ *                  une fois la réponse validée : revealed = true) ;
+ *  kind "answer" : « Lire la réponse » à côté de l'explication.
+ */
+const SPEAK_LABEL = {
+  fr: { all: ["Lire tout", "Lire la question, les propositions, puis la bonne réponse et l'explication une fois la réponse validée"],
+        answer: ["Lire la réponse", "Lire la bonne réponse et l'explication"] },
+  en: { all: ["Listen all", "Read the question and options, then the correct answer and explanation once answered"],
+        answer: ["Listen to answer", "Read the correct answer and the explanation"] },
+};
+const speakBtn = (q, shown = "en", kind = "answer", revealed = true) => {
   if (!canSpeak) return "";
-  if (shown === "fr" && hasFr(q) && canSpeakFr)
-    return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="fr" lang="fr" title="Lire à voix haute la question, la bonne réponse et l'explication (cliquer à nouveau pour arrêter)">🔊 Lire</button>`;
-  return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="en" lang="en" title="Read the question, the correct answer and the explanation aloud (click again to stop)">🔊 Listen</button>`;
+  const lang = shown === "fr" && hasFr(q) && canSpeakFr ? "fr" : "en";
+  const mode = kind === "all" ? (revealed ? "all" : "question") : "answer";
+  const [label, title] = SPEAK_LABEL[lang][kind];
+  return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="${lang}" data-speakmode="${mode}" lang="${lang}"
+    title="${esc(title)} (${lang === "fr" ? "cliquer à nouveau pour arrêter" : "click again to stop"})">🔊 ${esc(label)}</button>`;
 };
 function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
-    const q = list.find(x => String(x.id) === b.dataset.speak); if (q) speakAnswer(q, b, b.dataset.speaklang || "en");
+    const q = list.find(x => String(x.id) === b.dataset.speak);
+    if (q) speakAnswer(q, b, b.dataset.speaklang || "en", b.dataset.speakmode || "answer");
   });
 }
 const chTitle = c => (c ? (getLang() === "fr" && c.title_fr ? c.title_fr : c.title) : "");
@@ -773,7 +798,7 @@ function renderQuiz() {
     <article class="panel question-panel" lang="${txt.lang}">
       <div class="q-top">
         <p class="q-chapter mono muted">${esc(chTitle(chById(q.chapter_id)))}</p>
-        <div class="q-tools">${flagBtn(q)}
+        <div class="q-tools">${speakBtn(q, txt.lang, "all", checked)}${flagBtn(q)}
         ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}</div>
       </div>
       ${txt.scenario ? `<div class="scenario"><p class="mono kicker">${esc(t("quiz.scenario"))}</p><p>${esc(txt.scenario)}</p></div>` : ""}
@@ -783,7 +808,7 @@ function renderQuiz() {
       <ol class="opts">${opts}</ol>
       ${checked ? `
       <div class="explain ${isOk ? "ok" : "ko"}">
-        <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p><div class="speak-row">${speakBtn(q, txt.lang)}</div></div>
+        <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p><div class="speak-row">${speakBtn(q, txt.lang, "answer")}</div></div>
         <p>${esc(txt.explanation)}</p>
       </div>` : ""}
     </article>
@@ -884,7 +909,7 @@ function renderResults() {
         return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
       <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
-      <div class="review-tools">${speakBtn(d.q, txt.lang)} ${flagBtn(d.q)}</div>
+      <div class="review-tools">${speakBtn(d.q, txt.lang, "all")} ${speakBtn(d.q, txt.lang, "answer")} ${flagBtn(d.q)}</div>
     </details>`;
   }).join("");
 

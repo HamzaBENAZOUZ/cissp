@@ -194,7 +194,7 @@ export class SupabaseStore {
     }, null, async () => {
       const c = await idbGet("content");
       if (!c) throw new Error("offline");
-      return { chapters: c.chapters, questions: c.questions };
+      return { chapters: c.chapters, questions: c.questions, notes: c.notes || [] };
     });
   }
   async _loadContent() {
@@ -204,7 +204,14 @@ export class SupabaseStore {
       fetchAll(() => this.sb.from("questions").select("*").or("chapter_id.lte.200,chapter_id.gte.400").order("chapter_id").order("number")),
     ]);
     if (ch.error) throw ch.error;
-    return { chapters: ch.data, questions: qs };
+    // Sections « Summary » et « Study Essentials » du livre (table cissp_book_notes, facultative).
+    let notes = [];
+    try {
+      const r = await this.sb.from("cissp_book_notes").select("*").order("chapter_id");
+      if (r.error) throw r.error;
+      notes = r.data || [];
+    } catch (e) { console.warn("cissp_book_notes indisponible", e); }
+    return { chapters: ch.data, questions: qs, notes };
   }
   async attempts() {
     return this._try(() => this._attempts(), "attempts", async () => {
@@ -425,7 +432,10 @@ export class LocalStore {
         scenario: q.scenario || null, scenario_fr: q.scenario_fr || null,
       });
     }
-    return { chapters, questions };
+    let notes = [];   // texte du livre (Summary / Study Essentials), facultatif en local
+    try { const r = await fetch(this.dataUrl.replace(/[^/]+$/, "cissp_book_notes.json"), { cache: "no-store" }); if (r.ok) notes = await r.json(); }
+    catch { /* absent */ }
+    return { chapters, questions, notes };
   }
   async attempts() { return [...this._read().attempts].sort((a, b) => b.created_at.localeCompare(a.created_at)); }
   async answers() { return this._read().answers; }

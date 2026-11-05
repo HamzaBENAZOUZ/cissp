@@ -374,5 +374,8 @@ code { font-family: var(--mono); font-size: .85em; }
 .rev-panes { flex-wrap: wrap; }
 .rev-panes .seg-btn { font-size: .82rem; padding: 6px 12px; }
 .rev-pane p { margin: 0 0 .7rem; line-height: 1.6; }
+.rev-pane h4 { margin: 1.1rem 0 .4rem; font-size: 1rem; color: var(--accent, inherit); }
+.rev-pane h4:first-child { margin-top: .2rem; }
+.rev-pane .rev-list { margin: 0 0 .7rem; }
 .rev-list { margin: 0; padding-left: 1.2rem; line-height: 1.6; }
 .rev-list li { margin-bottom: .35rem; }

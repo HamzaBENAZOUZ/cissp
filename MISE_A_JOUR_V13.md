@@ -23,3 +23,9 @@ s'affiche en anglais le temps de la lecture, pour pouvoir suivre, puis revient e
 | `css/style.css` | couleur du surlignage (thèmes clair et sombre) |
 | `sw.js` | cache hors ligne v5 |
 | appli Android | nouveau pont `AndroidTTS.speakParts` : le téléphone signale le début de chaque phrase |
+
+## v13.1 : écran allumé pendant la lecture
+
+Tant qu'une lecture à voix haute est en cours, l'écran reste allumé et le téléphone ne se verrouille pas.
+Dès que la lecture se termine ou que vous l'arrêtez, la mise en veille normale reprend.
+Appli Android : `cissp-training-v3.8.apk`. Navigateur : API Screen Wake Lock (Chrome, Edge, Safari récents).

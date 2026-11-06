@@ -221,6 +221,11 @@ input:focus, select:focus { border-color: var(--green); outline: none; box-shado
 .verdict-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .verdict-row .verdict { margin: 0; }
 .btn-speak.on { border-color: var(--cyan); color: var(--cyan); }
+/* Phrase en cours de lecture à voix haute */
+::highlight(tts) { background-color: rgba(255, 196, 0, .32); color: inherit; }
+:root[data-theme="light"] ::highlight(tts) { background-color: rgba(255, 190, 0, .5); }
+.tts-on { background: rgba(255, 196, 0, .22); border-radius: 4px; box-shadow: 0 0 0 3px rgba(255, 196, 0, .22); }
+:root[data-theme="light"] .tts-on { background: rgba(255, 190, 0, .4); box-shadow: 0 0 0 3px rgba(255, 190, 0, .4); }
 .review .btn-speak { margin-top: 4px; }
 .explain.ok .verdict { color: var(--green); }
 .explain.ko .verdict { color: var(--red); }

@@ -337,6 +337,14 @@ code { font-family: var(--mono); font-size: .85em; }
 .offline-panel h3 { margin: 0 0 .3rem; }
 .offline-panel p { margin: 0; }
 .offline-panel .row { display: flex; gap: .4rem; flex-wrap: wrap; }
+/* Barre « Hors ligne » compacte, en haut de chaque onglet */
+.offline-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: 0 0 .8rem;
+  padding: .35rem .6rem; font-size: .8rem; border: 1px solid var(--line, rgba(127,127,127,.25)); border-radius: 8px;
+  background: color-mix(in srgb, var(--panel, transparent) 80%, transparent); }
+.offline-bar .off-status { flex: 1 1 auto; min-width: 0; color: var(--muted, inherit); }
+.switch.switch-sm { padding: 2px 8px 2px 2px; gap: 6px; font-size: .75rem; }
+.switch.switch-sm.on { padding: 2px 2px 2px 8px; }
+.switch.switch-sm .knob { width: 16px; height: 16px; }
 .badge.badge-off { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 60%, transparent); }
 
 /* Barre du haut sur téléphone : le sélecteur FR/EN ne doit jamais être écrasé */

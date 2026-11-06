@@ -482,18 +482,31 @@ async function offlinePanel() {
   const on = offlineEnabled(), info = on ? await state.store.offlineInfo() : null;
   const status = !on ? t("off.desc")
     : t("off.status", { n: info.n, d: info.at ? fmtDate(info.at) : "?" }) + (info.pending ? " " + t("off.pending", { n: info.pending }) : "");
-  const auto = autonomous();
-  return `<section class="panel offline-panel">
-    <div><h3 class="mono">📥 ${esc(t("off.title"))}</h3><p class="muted">${esc(status)}</p>
-      <div class="auto-row">
-        <button class="switch${auto ? " on" : ""}" id="btn-auto" role="switch" aria-checked="${auto}"><span class="knob"></span><span class="mono">${auto ? "ON" : "OFF"}</span></button>
-        <span><strong>✈️ ${esc(t("auto.title"))}</strong> <span class="muted">${esc(auto ? t("auto.onDesc") : t("auto.offDesc"))}</span></span>
-      </div></div>
-    <div class="row">${on
-      ? `<button class="btn btn-ghost btn-sm" id="btn-off-dl" ${state.store.offline ? "disabled" : ""}>${esc(t("off.update"))}</button>
-         <button class="btn btn-ghost btn-sm" id="btn-off-rm" ${state.store.offline ? "disabled" : ""}>${esc(t("off.remove"))}</button>`
-      : `<button class="btn btn-primary btn-sm" id="btn-off-dl">${esc(t("off.download"))}</button>`}</div>
-  </section>`;
+  const auto = autonomous(), busy = state.store.offline ? "disabled" : "";
+  // Barre compacte, en haut de tous les onglets (accueil, révision, livre).
+  return `<div class="offline-bar" title="${esc(status)}">
+    <span class="off-status">📥 ${esc(on ? t("off.short", { n: info.n, d: info.at ? fmtDate(info.at) : "?" }) + (info.pending ? " · " + t("off.pending", { n: info.pending }) : "") : t("off.title"))}</span>
+    <button class="switch switch-sm${auto ? " on" : ""}" id="btn-auto" role="switch" aria-checked="${auto}" title="${esc(auto ? t("auto.onDesc") : t("auto.offDesc"))}"><span class="knob"></span><span class="mono">✈️ ${esc(t("auto.short"))} ${auto ? "ON" : "OFF"}</span></button>
+    ${on ? `<button class="btn btn-ghost btn-xs" id="btn-off-dl" ${busy}>${esc(t("off.update"))}</button>
+      <button class="btn btn-ghost btn-xs" id="btn-off-rm" ${busy}>${esc(t("off.remove"))}</button>`
+      : `<button class="btn btn-primary btn-xs" id="btn-off-dl">${esc(t("off.download"))}</button>`}
+  </div>`;
+}
+/** Affiche la barre « Hors ligne » dans #offline-slot de la vue courante et branche ses boutons. */
+function mountOffline() {
+  offlinePanel().then(html => {
+    const slot = document.getElementById("offline-slot");
+    if (!slot || !html) return;
+    slot.innerHTML = html;
+    const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
+    if (dl) dl.onclick = () => downloadOffline(dl);
+    const au = document.getElementById("btn-auto");
+    if (au) au.onclick = () => toggleAutonomous(au);
+    if (rm) rm.onclick = async () => {
+      if (!confirm(t("off.removeConfirm"))) return;
+      await state.store.clearOffline(); await unregisterSW(); toast(t("off.removed"), "info"); renderHome();
+    };
+  });
 }
 
 async function refreshProgress() {
@@ -742,6 +755,7 @@ function renderRevision(sec = "revision") {
       <div class="rev-grid">${rs.map(card).join("")}</div></section>`;
   }).join("");
   app.innerHTML = `
+  <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : "review"} --lang=${lang}</p>
     <h1 class="glitch" data-text="${isBook ? "CISSP BOOK" : "CISSP REVIEW"}">${isBook ? "CISSP BOOK" : "CISSP REVIEW"}</h1>
@@ -780,6 +794,7 @@ function renderRevision(sec = "revision") {
   const all = open => () => app.querySelectorAll(".rev-card").forEach(d => { d.open = open; });
   document.getElementById("rev-open-all").onclick = all(true);
   document.getElementById("rev-close-all").onclick = all(false);
+  mountOffline();
 }
 
 function renderHome() {
@@ -844,6 +859,7 @@ function renderHome() {
 
   const sizes = [25, 50, 100, 125, 150];
   app.innerHTML = `
+  <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@${cert}:~$ ./train --mode=qcm --lang=${getLang()}</p>
     <h1 class="glitch" data-text="${CERT} TRAINING TERMINAL">${CERT} TRAINING TERMINAL</h1>
@@ -857,7 +873,6 @@ function renderHome() {
     </div>
   </section>
 
-  <div id="offline-slot"></div>
   <div id="saved-slot">${savedPanel()}</div>
   <section class="panel actions-panel">
     <div class="action">
@@ -927,19 +942,7 @@ function renderHome() {
     startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "flagged" }, questions: shuffle(flagged(inSec)), feedback: true });
   };
   document.getElementById("btn-history").onclick = () => go("history");
-  offlinePanel().then(html => {
-    const slot = document.getElementById("offline-slot");
-    if (!slot || !html) return;
-    slot.innerHTML = html;
-    const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
-    if (dl) dl.onclick = () => downloadOffline(dl);
-    const au = document.getElementById("btn-auto");
-    if (au) au.onclick = () => toggleAutonomous(au);
-    if (rm) rm.onclick = async () => {
-      if (!confirm(t("off.removeConfirm"))) return;
-      await state.store.clearOffline(); await unregisterSW(); toast(t("off.removed"), "info"); renderHome();
-    };
-  });
+  mountOffline();
 }
 
 // ------------------------------------------------------------------ quiz

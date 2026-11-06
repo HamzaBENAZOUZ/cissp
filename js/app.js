@@ -79,7 +79,7 @@ let speakingId = null, speakSeq = 0, speakEnd = null;
 function stopSpeak() {
   speakSeq++;   // invalide les événements de la lecture en cours
   if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel();
-  speakingId = null; hlClear();
+  speakingId = null; hlClear(); keepAwake(false);
   const f = speakEnd; speakEnd = null; if (f) f();
   document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on"));
 }
@@ -118,6 +118,14 @@ const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "fu
    Le texte lu est pris dans la page elle-même (éléments marqués), découpé en phrases ; chaque phrase est envoyée
    au moteur vocal séparément et surlignée quand sa lecture commence. Surlignage : API CSS Custom Highlight
    (sans toucher au HTML) ; à défaut, tout le paragraphe est surligné. */
+/* Écran allumé pendant la lecture (navigateur : API Screen Wake Lock ; l'appli Android s'en charge elle-même). */
+let wakeLock = null;
+function keepAwake(on) {
+  if (nativeTTS || !("wakeLock" in navigator)) return;
+  if (on) {
+    if (!wakeLock) navigator.wakeLock.request("screen").then(l => { if (speakingId && !wakeLock) wakeLock = l; else l.release().catch(() => {}); }).catch(() => {});
+  } else if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+}
 const HL_API = typeof CSS !== "undefined" && !!CSS.highlights && typeof Highlight === "function";
 let hlEl = null;
 function hlClear() {
@@ -186,11 +194,11 @@ function speakUnits(key, units, lang, btn, onEnd) {
   units = units.filter(u => u.text);
   if (!units.length) { if (onEnd) onEnd(); return; }
   const seq = ++speakSeq, alive = () => seq === speakSeq;
-  speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
+  speakingId = key; speakEnd = onEnd || null; btn.classList.add("on"); keepAwake(true);
   const mark = i => { if (alive()) hlShow(units[i]); };
   const done = () => {
     if (!alive()) return;
-    speakSeq++; speakingId = null; btn.classList.remove("on"); hlClear();
+    speakSeq++; speakingId = null; btn.classList.remove("on"); hlClear(); keepAwake(false);
     const f = speakEnd; speakEnd = null; if (f) f();
   };
   const L = lang === "fr" ? "fr-FR" : "en-US";

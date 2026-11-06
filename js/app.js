@@ -75,10 +75,16 @@ const hasFr = q => !!q.question_fr;
 // Dans l'application Android, la WebView ne parle pas : on passe par le moteur vocal du téléphone (pont AndroidTTS).
 const nativeTTS = window.AndroidTTS || null;
 const canSpeak = !!nativeTTS || ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
-let speakingId = null;
-function stopSpeak() { if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel(); speakingId = null; document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on")); }
+let speakingId = null, speakSeq = 0, speakEnd = null;
+function stopSpeak() {
+  speakSeq++;   // invalide les événements de la lecture en cours
+  if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel();
+  speakingId = null; hlClear();
+  const f = speakEnd; speakEnd = null; if (f) f();
+  document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on"));
+}
 /**
- * Texte lu à voix haute.
+ * Texte lu à voix haute (voir quizParts) :
  *  - mode "answer"   : la bonne réponse puis l'explication ;
  *  - mode "question" : la question et ses propositions (avant validation : rien n'est dévoilé) ;
  *  - mode "all"      : la question, ses propositions, la bonne réponse et l'explication.
@@ -86,17 +92,6 @@ function stopSpeak() { if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speec
 /** Assemble des morceaux de texte avec un point entre eux, sauf s'ils finissent déjà par une ponctuation. */
 const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).filter(Boolean)
   .map(x => /[.?!:;…]$/.test(x) ? x : x + ".").join(" ");
-function answerSpeech(q, lang = "en", mode = "all") {
-  const x = qText(q, lang), fr = lang === "fr";
-  const opt = L => `${L}${fr ? " :" : ":"} ${x.options[L.charCodeAt(0) - 65] || ""}`;
-  const letters = x.options.map((_, i) => String.fromCharCode(65 + i));
-  const question = joinSpeech(["Question", x.scenario, x.question, ...letters.map(opt)]);
-  const head = fr ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
-  const answer = joinSpeech([head, ...q.correct.map(opt), x.explanation]);
-  if (mode === "question") return question;
-  if (mode === "answer") return answer;
-  return `${question} ${answer}`;
-}
 /* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
    sinon une autre voix neuronale fr-FR, puis toute voix fr-FR, puis toute voix française. */
 function pickVoiceFr() {
@@ -119,27 +114,127 @@ function pickVoice() {
 if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
 // Lecture en français : navigateur, ou application Android 2.3+ (pont speakLang).
 const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "function");
-function speakAnswer(q, btn, lang = "en", mode = "all") {
-  speakText(q.id + ":" + lang + ":" + mode, answerSpeech(q, lang, mode), lang, btn);
+/* ---- Surlignage de la phrase en cours de lecture ----
+   Le texte lu est pris dans la page elle-même (éléments marqués), découpé en phrases ; chaque phrase est envoyée
+   au moteur vocal séparément et surlignée quand sa lecture commence. Surlignage : API CSS Custom Highlight
+   (sans toucher au HTML) ; à défaut, tout le paragraphe est surligné. */
+const HL_API = typeof CSS !== "undefined" && !!CSS.highlights && typeof Highlight === "function";
+let hlEl = null;
+function hlClear() {
+  if (HL_API) CSS.highlights.delete("tts");
+  if (hlEl) { hlEl.classList.remove("tts-on"); hlEl = null; }
 }
-/** Lit un texte (anglais ou français) ; un second clic sur le même bouton arrête la lecture. */
-function speakText(key, text, lang, btn) {
+function hlShow(u) {
+  hlClear();
+  if (!u || !u.el || !u.el.isConnected) return;
+  let rect;
+  if (HL_API && u.range) { CSS.highlights.set("tts", new Highlight(u.range)); rect = u.range.getBoundingClientRect(); }
+  else { hlEl = u.el; hlEl.classList.add("tts-on"); rect = hlEl.getBoundingClientRect(); }
+  // garde la phrase lue visible à l'écran
+  const vh = window.innerHeight || 600;
+  if (rect && rect.height && (rect.top < 70 || rect.bottom > vh - 24)) window.scrollBy({ top: rect.top - vh / 3, behavior: "smooth" });
+}
+/** Découpe un texte en phrases : liste de [début, fin] (espaces exclus). */
+function sentenceSpans(text, lang) {
+  const out = [];
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    for (const x of new Intl.Segmenter(lang, { granularity: "sentence" }).segment(text)) out.push([x.index, x.index + x.segment.length]);
+  } else {
+    const re = /[^.!?…]+(?:[.!?…]+["'»”)\]]*|$)\s*/g; let m;
+    while ((m = re.exec(text)) && m[0]) out.push([m.index, m.index + m[0].length]);
+  }
+  return out.map(([a, b]) => { while (a < b && /\s/.test(text[a])) a++; while (b > a && /\s/.test(text[b - 1])) b--; return [a, b]; })
+    .filter(([a, b]) => /[\p{L}\p{N}]/u.test(text.slice(a, b)));
+}
+/** Plage DOM couvrant les caractères [a, b[ du texte d'un élément. */
+function textRange(el, a, b) {
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), r = document.createRange();
+  let pos = 0, n, started = false;
+  while ((n = w.nextNode())) {
+    const len = n.data.length;
+    if (!started && a < pos + len) { r.setStart(n, a - pos); started = true; }
+    if (started && b <= pos + len) { r.setEnd(n, b - pos); return r; }
+    pos += len;
+  }
+  return null;
+}
+/**
+ * Morceaux à lire -> phrases : une chaîne est lue sans surlignage (« Question », « Bonne réponse »…) ;
+ * { el, prefix } lit le texte de l'élément phrase par phrase en le surlignant (prefix : « A : » devant une proposition).
+ */
+function speechUnits(parts, lang) {
+  const units = [];
+  for (const p of parts) {
+    if (!p) continue;
+    if (typeof p === "string") { const x = joinSpeech([p]); if (x) units.push({ text: x }); continue; }
+    if (!p.el) continue;
+    const text = p.el.textContent, spans = sentenceSpans(text, lang);
+    spans.forEach(([a, b], i) => {
+      let x = text.slice(a, b);
+      if (i === spans.length - 1 && !/[.?!:;…]["'»”)\]]*$/.test(x)) x += ".";
+      if (i === 0 && p.prefix) x = p.prefix + " " + x;
+      units.push({ text: x, el: p.el, range: HL_API ? textRange(p.el, a, b) : null });
+    });
+  }
+  return units;
+}
+/** Lit des phrases (anglais ou français) en surlignant celle en cours ; un second clic sur le même bouton arrête. */
+function speakUnits(key, units, lang, btn, onEnd) {
   if (!canSpeak) return;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  const done = () => { if (speakingId === key) { speakingId = null; btn.classList.remove("on"); } };
-  speakingId = key; btn.classList.add("on");
+  units = units.filter(u => u.text);
+  if (!units.length) { if (onEnd) onEnd(); return; }
+  const seq = ++speakSeq, alive = () => seq === speakSeq;
+  speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
+  const mark = i => { if (alive()) hlShow(units[i]); };
+  const done = () => {
+    if (!alive()) return;
+    speakSeq++; speakingId = null; btn.classList.remove("on"); hlClear();
+    const f = speakEnd; speakEnd = null; if (f) f();
+  };
+  const L = lang === "fr" ? "fr-FR" : "en-US";
   if (nativeTTS) {
-    window.__ttsDone = done;
-    if (lang === "fr") nativeTTS.speakLang(text, "fr-FR"); else nativeTTS.speak(text);
+    if (typeof nativeTTS.speakParts === "function") {   // appli récente : toutes les phrases d'un coup, repère à chaque phrase
+      window.__ttsMark = mark; window.__ttsDone = done;
+      nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L);
+    } else {   // appli plus ancienne : une phrase après l'autre
+      let i = 0;
+      const next = () => {
+        if (!alive()) return;
+        if (i >= units.length) { done(); return; }
+        mark(i); const x = units[i++].text;
+        window.__ttsDone = next;
+        if (lang === "fr" && nativeTTS.speakLang) nativeTTS.speakLang(x, L); else nativeTTS.speak(x);
+      };
+      next();
+    }
     return;
   }
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang === "fr" ? "fr-FR" : "en-US"; u.rate = 1;
   const v = lang === "fr" ? pickVoiceFr() : pickVoice();
-  if (v) u.voice = v;
-  u.onend = u.onerror = done;
-  speechSynthesis.speak(u);
+  units.forEach((x, i) => {
+    const u = new SpeechSynthesisUtterance(x.text);
+    u.lang = L; u.rate = 1;
+    if (v) u.voice = v;
+    u.onstart = () => mark(i);
+    if (i === units.length - 1) u.onend = done;
+    u.onerror = e => { if (alive() && e.error !== "interrupted" && e.error !== "canceled") stopSpeak(); };
+    speechSynthesis.speak(u);
+  });
+}
+/** Lecture d'une question (page du quiz ou correction) : le texte lu est celui affiché dans la boîte de la question. */
+function quizParts(q, box, lang, mode) {
+  const fr = lang === "fr", el = k => box.querySelector(`[data-tts="${k}"]`);
+  const opts = [...box.querySelectorAll('[data-tts="opt"]')];
+  const opt = i => ({ el: opts[i], prefix: String.fromCharCode(65 + i) + (fr ? " :" : ":") });
+  const question = ["Question", { el: el("scenario") }, { el: el("q") }, ...opts.map((_, i) => opt(i))];
+  const head = fr ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
+  const answer = [head, ...q.correct.map(L => opt(L.charCodeAt(0) - 65)), { el: el("exp") }];
+  return mode === "question" ? question : mode === "answer" ? answer : [...question, ...answer];
+}
+function speakAnswer(q, btn, lang = "en", mode = "all") {
+  const box = btn.closest(".question-panel, .review") || app;
+  speakUnits(q.id + ":" + lang + ":" + mode, speechUnits(quizParts(q, box, lang, mode), lang), lang, btn);
 }
 /**
  * Bouton de lecture, dans la langue affichée (français : « Lire… », anglais : « Listen… »).
@@ -586,10 +681,11 @@ function revLines(r, pane, lang) {
   }
   return pane === "sum" ? r.sum[lang] : r[pane][lang];
 }
+/** En-tête lu avant la fiche (« Chapitre n. Titre. Volet. ») ; le texte lui-même est lu depuis la page. */
 function revSpeech(r, pane, lang) {
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
   const head = t("rev.pane." + pane, {}, lang);
-  return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head, ...revLines(r, pane, lang).map(l => l.replace(/^(## |- )/, ""))]);
+  return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head]);
 }
 function revPaneHtml(r, pane, lang) {
   if (pane === "sum" || pane === "bsum" || pane === "bess") {
@@ -658,8 +754,19 @@ function renderRevision(sec = "revision") {
     });
     d.querySelectorAll("[data-revspeak]").forEach(b => b.onclick = e => {
       e.preventDefault();
-      const l = b.dataset.revspeak, pane = paneOf(id);
-      speakText(`rev:${id}:${pane}:${l}`, revSpeech(r, pane, l), l, b);
+      const l = b.dataset.revspeak, pane = paneOf(id), k = `rev:${id}:${pane}:${l}`;
+      if (speakingId === k) { stopSpeak(); return; }
+      stopSpeak();
+      // Lecture dans l'autre langue (Listen alors que le site est en français) : on affiche le texte lu le temps
+      // de la lecture, pour pouvoir le suivre, puis on remet la langue du site.
+      const box = d.querySelector(".rev-pane"), shown = getLang();
+      let restore = null;
+      if (l !== shown) {
+        box.innerHTML = revPaneHtml(r, pane, l); box.lang = l;
+        restore = () => { if (box.isConnected && (paneOf(id)) === pane) { box.innerHTML = revPaneHtml(r, pane, getLang()); box.removeAttribute("lang"); } };
+      }
+      const parts = [revSpeech(r, pane, l), ...[...box.querySelectorAll("h4, p, li")].map(el => ({ el }))];
+      speakUnits(k, speechUnits(parts, l), l, b, restore);
     });
   });
   const all = open => () => app.querySelectorAll(".rev-card").forEach(d => { d.open = open; });
@@ -952,7 +1059,7 @@ function renderQuiz() {
       else if (sel) cls += " wrong";
     }
     return `<li><button class="opt ${cls}" data-letter="${L}" ${checked ? "disabled" : ""} role="${q.multi ? "checkbox" : "radio"}" aria-checked="${sel}">
-      <span class="opt-key mono">${L}</span><span class="opt-txt">${esc(o)}</span>
+      <span class="opt-key mono">${L}</span><span class="opt-txt" data-tts="opt">${esc(o)}</span>
       <span class="opt-mark mono">${checked ? (q.correct.includes(L) ? "✓" : sel ? "✗" : "") : ""}</span></button></li>`;
   }).join("");
 
@@ -984,15 +1091,15 @@ function renderQuiz() {
         <div class="q-tools">${speakBtn(q, txt.lang, "all", checked)}${flagBtn(q)}
         ${canPeek ? `<button class="btn btn-ghost btn-xs" id="btn-peek" lang="${getLang()}">${esc(peekLabel)}</button>` : ""}</div>
       </div>
-      ${txt.scenario ? `<div class="scenario"><p class="mono kicker">${esc(t("quiz.scenario"))}</p><p>${esc(txt.scenario)}</p></div>` : ""}
-      <h2 class="q-text">${esc(txt.question)}</h2>
+      ${txt.scenario ? `<div class="scenario"><p class="mono kicker">${esc(t("quiz.scenario"))}</p><p data-tts="scenario">${esc(txt.scenario)}</p></div>` : ""}
+      <h2 class="q-text" data-tts="q">${esc(txt.question)}</h2>
       ${getLang() === "fr" && !z.peek && !hasFr(q) ? `<p class="hint mono">${esc(t("quiz.untranslated"))}</p>` : ""}
       ${q.multi ? `<p class="hint mono">${esc(t("quiz.multi"))}</p>` : ""}
       <ol class="opts">${opts}</ol>
       ${checked ? `
       <div class="explain ${isOk ? "ok" : "ko"}">
         <div class="verdict-row"><p class="mono verdict">${esc(isOk ? t("quiz.granted") : t("quiz.denied", { a: q.correct.join(", ") }))}</p><div class="speak-row">${speakBtn(q, txt.lang, "answer")}</div></div>
-        <p>${esc(txt.explanation)}</p>
+        <p data-tts="exp">${esc(txt.explanation)}</p>
       </div>` : ""}
     </article>
 
@@ -1085,13 +1192,13 @@ function renderResults() {
     return `
     <details class="review ${d.ok ? "ok" : "ko"}" ${d.ok ? "" : "open"} lang="${txt.lang}">
       <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">${chLabel(d.q.chapter_id)}#${d.q.number}</span> ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
-      ${txt.scenario ? `<p class="muted small">${esc(txt.scenario)}</p>` : ""}
-      <p class="q-text-sm">${esc(txt.question)}</p>
+      ${txt.scenario ? `<p class="muted small" data-tts="scenario">${esc(txt.scenario)}</p>` : ""}
+      <p class="q-text-sm" data-tts="q">${esc(txt.question)}</p>
       <ol class="opts opts-sm">${txt.options.map((o, i) => {
         const L = letter(i); const c = d.q.correct.includes(L); const s = d.picks.includes(L);
-        return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> ${esc(o)} ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
+        return `<li class="${c ? "correct" : s ? "wrong" : ""}"><span class="opt-key mono">${L}</span> <span data-tts="opt">${esc(o)}</span> ${s ? `<span class="mono muted">${esc(t("res.yourChoice"))}</span>` : ""}</li>`;
       }).join("")}</ol>
-      <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}${esc(txt.explanation)}</p>
+      <p class="muted">${d.picks.length ? "" : `<em>${esc(t("res.noAnswer"))}</em> `}<span data-tts="exp">${esc(txt.explanation)}</span></p>
       <div class="review-tools">${speakBtn(d.q, txt.lang, "all")} ${speakBtn(d.q, txt.lang, "answer")} ${flagBtn(d.q)}</div>
     </details>`;
   }).join("");

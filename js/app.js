@@ -547,7 +547,7 @@ function renderLogin(mode = "login") {
   app.innerHTML = `
   <section class="auth panel">
     <p class="mono kicker">&gt; ${esc(t("auth.required"))}</p>
-    <h1 class="glitch" data-text="ACCESS CONTROL">ACCESS CONTROL</h1>
+    <h1 class="glitch">${esc(t("auth.title"))}</h1>
     <p class="muted">${esc(signup ? t("auth.introSignup") : t("auth.introLogin"))}</p>
     <form id="auth-form" class="form">
       <label>${esc(t("auth.email"))}<input type="email" name="email" autocomplete="email" required></label>
@@ -758,7 +758,7 @@ function renderRevision(sec = "revision") {
   <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : "review"} --lang=${lang}</p>
-    <h1 class="glitch" data-text="${isBook ? "CISSP BOOK" : "CISSP REVIEW"}">${isBook ? "CISSP BOOK" : "CISSP REVIEW"}</h1>
+    <h1 class="glitch" data-text="${isBook ? "CISSP Book" : "CISSP Review"}">${isBook ? "CISSP Book" : "CISSP Review"}</h1>
     ${secTabs(sec)}
     <p class="muted">${esc(t(isBook ? "book.sub" : "rev.sub", { n: ITEMS.length }))}</p>
     <div class="row"><button class="btn btn-ghost btn-sm" id="rev-open-all">${esc(t("rev.openAll"))}</button>
@@ -862,7 +862,7 @@ function renderHome() {
   <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@${cert}:~$ ./train --mode=qcm --lang=${getLang()}</p>
-    <h1 class="glitch" data-text="${CERT} TRAINING TERMINAL">${CERT} TRAINING TERMINAL</h1>
+    <h1 class="glitch" data-text="${CERT} Training">${CERT} Training</h1>
     ${tabs}
     <p class="muted">${esc(t(subKey, { n: total, c: SC.length }))}</p>
     <div class="stats">
@@ -1218,7 +1218,7 @@ function renderResults() {
   <section class="results">
     <div class="panel score-panel ${pass ? "pass" : "fail"}">
       <p class="mono kicker">${esc(r.label())}</p>
-      <h1 class="glitch" data-text="${pass ? "ACCESS GRANTED" : "ACCESS DENIED"}">${pass ? "ACCESS GRANTED" : "ACCESS DENIED"}</h1>
+      <h1 class="glitch">${esc(t(pass ? "res.pass" : "res.fail"))}</h1>
       <div class="ring" style="--p:${score}"><span class="mono">${score}%</span></div>
       <p class="mono">${esc(t("res.stats", { c: r.correct, t: r.total, time: fmtTime(r.duration), p: PASS }))}</p>
       <p class="muted small mono">${esc(r.saved ? t("res.saved") : t("res.notSaved"))}</p>

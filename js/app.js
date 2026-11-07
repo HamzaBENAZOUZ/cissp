@@ -76,12 +76,63 @@ const hasFr = q => !!q.question_fr;
 const nativeTTS = window.AndroidTTS || null;
 const canSpeak = !!nativeTTS || ("speechSynthesis" in window && "SpeechSynthesisUtterance" in window);
 let speakingId = null, speakSeq = 0, speakEnd = null;
-function stopSpeak() {
+/* Lecteur : lecture en cours (pour pause / reprise / vitesse depuis la barre du haut). */
+let player = null;   // { key, units, lang, btn, idx, paused }
+const RATES = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
+let ttsRate = (() => { try { const v = parseFloat(localStorage.getItem("cissp-tts-rate")); return RATES.includes(v) ? v : 1; } catch { return 1; } })();
+function haltEngine() {
   speakSeq++;   // invalide les événements de la lecture en cours
   if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel();
-  speakingId = null; hlClear(); keepAwake(false);
+}
+function stopSpeak() {
+  haltEngine();
+  speakingId = null; player = null; hlClear(); keepAwake(false);
   const f = speakEnd; speakEnd = null; if (f) f();
   document.querySelectorAll(".btn-speak.on").forEach(b => b.classList.remove("on"));
+  renderPlayer();
+}
+function pauseSpeak() {
+  if (!player || player.paused) return;
+  haltEngine(); player.paused = true; keepAwake(false); renderPlayer();
+}
+function resumeSpeak() {
+  if (!player || !player.paused) return;
+  player.paused = false; playFrom(player.idx);
+}
+function setRate(dir) {
+  const i = RATES.indexOf(ttsRate);
+  ttsRate = RATES[Math.max(0, Math.min(RATES.length - 1, i + dir))];
+  try { localStorage.setItem("cissp-tts-rate", String(ttsRate)); } catch { /* ignore */ }
+  if (player && !player.paused) { haltEngine(); playFrom(player.idx); } else renderPlayer();
+}
+/* Barre de lecture fixée en haut de l'écran (visible pendant une lecture, utile en mode paysage). */
+function renderPlayer() {
+  let bar = document.getElementById("tts-bar");
+  if (!player) { if (bar) bar.hidden = true; return; }
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "tts-bar"; bar.className = "tts-bar"; bar.setAttribute("role", "toolbar");
+    document.body.appendChild(bar);
+    bar.addEventListener("click", e => {
+      const b = e.target.closest("button[data-tts-act]"); if (!b) return;
+      const act = b.dataset.ttsAct;
+      if (act === "toggle") (player && player.paused ? resumeSpeak : pauseSpeak)();
+      else if (act === "slower") setRate(-1);
+      else if (act === "faster") setRate(1);
+      else if (act === "stop") stopSpeak();
+    });
+  }
+  const fr = getLang() === "fr", paused = player.paused;
+  bar.setAttribute("aria-label", fr ? "Lecture à voix haute" : "Read aloud");
+  bar.innerHTML = `
+    <button class="tts-btn" data-tts-act="slower" title="${fr ? "Ralentir" : "Slower"}" aria-label="${fr ? "Ralentir" : "Slower"}">−</button>
+    <span class="tts-rate">${String(ttsRate).replace(".", fr ? "," : ".")}×</span>
+    <button class="tts-btn" data-tts-act="faster" title="${fr ? "Accélérer" : "Faster"}" aria-label="${fr ? "Accélérer" : "Faster"}">+</button>
+    <button class="tts-btn tts-main" data-tts-act="toggle" title="${paused ? (fr ? "Reprendre" : "Play") : "Pause"}" aria-label="${paused ? (fr ? "Reprendre" : "Play") : "Pause"}">${paused
+      ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>'}</button>
+    <span class="tts-pos">${Math.min(player.idx + 1, player.units.length)}/${player.units.length}</span>
+    <button class="tts-btn" data-tts-act="stop" title="${fr ? "Arrêter" : "Stop"}" aria-label="${fr ? "Arrêter" : "Stop"}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6h12v12H6z" fill="currentColor"/></svg></button>`;
+  bar.hidden = false;
 }
 /**
  * Texte lu à voix haute (voir quizParts) :
@@ -193,16 +244,27 @@ function speakUnits(key, units, lang, btn, onEnd) {
   stopSpeak();
   units = units.filter(u => u.text);
   if (!units.length) { if (onEnd) onEnd(); return; }
-  const seq = ++speakSeq, alive = () => seq === speakSeq;
-  speakingId = key; speakEnd = onEnd || null; btn.classList.add("on"); keepAwake(true);
-  const mark = i => { if (alive()) hlShow(units[i]); };
+  speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
+  player = { key, units, lang, btn, idx: 0, paused: false };
+  playFrom(0);
+}
+/** Lit les phrases du lecteur à partir de la n° « from », à la vitesse choisie. */
+function playFrom(from) {
+  const P = player; if (!P) return;
+  const units = P.units.slice(from), lang = P.lang;
+  const seq = ++speakSeq, alive = () => seq === speakSeq && player === P;
+  keepAwake(true);
+  const mark = i => { if (alive()) { P.idx = from + i; hlShow(units[i]); renderPlayer(); } };
   const done = () => {
     if (!alive()) return;
-    speakSeq++; speakingId = null; btn.classList.remove("on"); hlClear(); keepAwake(false);
+    speakSeq++; speakingId = null; player = null; P.btn.classList.remove("on"); hlClear(); keepAwake(false);
     const f = speakEnd; speakEnd = null; if (f) f();
+    renderPlayer();
   };
+  renderPlayer();
   const L = lang === "fr" ? "fr-FR" : "en-US";
   if (nativeTTS) {
+    if (typeof nativeTTS.setRate === "function") nativeTTS.setRate(ttsRate);
     if (typeof nativeTTS.speakParts === "function") {   // appli récente : toutes les phrases d'un coup, repère à chaque phrase
       window.__ttsMark = mark; window.__ttsDone = done;
       nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L);
@@ -222,7 +284,7 @@ function speakUnits(key, units, lang, btn, onEnd) {
   const v = lang === "fr" ? pickVoiceFr() : pickVoice();
   units.forEach((x, i) => {
     const u = new SpeechSynthesisUtterance(x.text);
-    u.lang = L; u.rate = 1;
+    u.lang = L; u.rate = ttsRate;
     if (v) u.voice = v;
     u.onstart = () => mark(i);
     if (i === units.length - 1) u.onend = done;

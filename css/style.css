@@ -585,3 +585,18 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .q-text { font-family: var(--sans); font-weight: 600; letter-spacing: -.005em; }
 .ch-title { font-family: var(--sans); font-weight: 600; }
 .stat-val { font-weight: 800; }
+
+/* Barre de lecture à voix haute, fixée en haut (pause / reprise / vitesse) */
+.tts-bar { position: fixed; z-index: 40; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 999px;
+  background: var(--panel-solid); border: 1px solid var(--line-2); box-shadow: 0 14px 34px -14px rgba(0,0,0,.55);
+  font-family: var(--display); max-width: calc(100vw - 24px); }
+.tts-bar[hidden] { display: none; }
+.tts-btn { display: grid; place-items: center; min-width: 38px; height: 38px; padding: 0 10px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); font: 700 1.1rem var(--display); }
+.tts-btn:hover { border-color: var(--acc); color: var(--acc); }
+.tts-btn.tts-main { background: var(--grad); color: #fff; border: 0; min-width: 46px; height: 46px; }
+.tts-rate { min-width: 3.4em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tts-pos { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding: 0 4px; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 60px); } }
+@media (orientation: landscape) and (max-height: 500px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 8px); right: max(12px, env(safe-area-inset-right, 0px)); left: auto; transform: none; } }

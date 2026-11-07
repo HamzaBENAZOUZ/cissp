@@ -1,12 +1,11 @@
 // Service worker du mode hors ligne : fichiers du site en cache, réseau d'abord (les mises à jour arrivent
 // tout de suite quand on est connecté), cache si le réseau ne répond pas. Les données (Supabase) ne passent
 // pas par ici : elles sont gardées dans IndexedDB par js/store.js.
-const CACHE = "cissp-site-v11";
+const CACHE = "cissp-site-v12";
 const FILES = [
   "./", "index.html", "css/style.css", "js/app.js", "js/store.js", "js/i18n.js", "js/offline.js", "js/matrix.js", "js/revision.js",
-  "js/config.js", "assets/favicon.svg", "assets/favicon.png", "assets/logo-cissp.png",
+  "js/config.js", "assets/favicon.svg", "assets/favicon.png", "assets/fonts/montserrat.woff2", "assets/fonts/inter.woff2", "assets/fonts/geist-mono.woff2", "assets/logo-cissp.png",
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js",
-  "https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600&display=swap",
 ];
 const CACHED_HOSTS = [self.location.host, "cdn.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
 

@@ -246,20 +246,19 @@ function speakAnswer(q, btn, lang = "en", mode = "all") {
 }
 /**
  * Bouton de lecture, dans la langue affichée (français : « Lire… », anglais : « Listen… »).
- *  kind "all"    : « Lire tout » à côté de la question (question + propositions, puis réponse et explication
- *                  une fois la réponse validée : revealed = true) ;
- *  kind "answer" : « Lire la réponse » à côté de l'explication.
+ *  kind "all"    : « Lire la question » à côté de la question : question + propositions seulement ;
+ *  kind "answer" : « Lire la correction » à côté de l'explication : bonne réponse + explication.
  */
 const SPEAK_LABEL = {
-  fr: { all: ["Lire tout", "Lire la question, les propositions, puis la bonne réponse et l'explication une fois la réponse validée"],
-        answer: ["Lire la réponse", "Lire la bonne réponse et l'explication"] },
-  en: { all: ["Listen all", "Read the question and options, then the correct answer and explanation once answered"],
-        answer: ["Listen to answer", "Read the correct answer and the explanation"] },
+  fr: { all: ["Lire la question", "Lire la question et les propositions, sans dévoiler la réponse"],
+        answer: ["Lire la correction", "Lire la bonne réponse et l'explication"] },
+  en: { all: ["Listen to question", "Read the question and the options aloud, without revealing the answer"],
+        answer: ["Listen to explanation", "Read the correct answer and the explanation"] },
 };
 const speakBtn = (q, shown = "en", kind = "answer", revealed = true) => {
   if (!canSpeak) return "";
   const lang = shown === "fr" && hasFr(q) && canSpeakFr ? "fr" : "en";
-  const mode = kind === "all" ? (revealed ? "all" : "question") : "answer";
+  const mode = kind === "all" ? "question" : "answer";   // « Lire la question » ne dévoile jamais la réponse
   const [label, title] = SPEAK_LABEL[lang][kind];
   return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="${lang}" data-speakmode="${mode}" lang="${lang}"
     title="${esc(title)} (${lang === "fr" ? "cliquer à nouveau pour arrêter" : "click again to stop"})">🔊 ${esc(label)}</button>`;

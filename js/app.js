@@ -658,7 +658,7 @@ function route() {
   const h = location.hash.replace(/^#\/?/, "");
   if (state.quiz && h !== "quiz") {
     if (state.quiz.saveId) { saveQuiz(true); flushSave(); }  // quiz déjà sauvegardé : on enregistre tout de suite, pas besoin de confirmer
-    else if (!confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
+    else if (answeredOf(state.quiz) && !confirm(t("quiz.leave"))) { history.replaceState(null, "", "#/quiz"); return; }
     stopTimer(); state.quiz = null;
   }
   if (h === "quiz" && state.quiz) return renderQuiz();
@@ -1099,13 +1099,22 @@ const loadSaved = () => state.saved || [];
 async function refreshSaved() {
   try {
     const own = new Set(state.questions.map(q => q.id));   // quiz sauvegardés du site CCSP : ignorés ici
-    state.saved = (await state.store.listSaved()).filter(x => (x.qids || []).some(id => own.has(id))).slice(0, 20);
+    const listed = (await state.store.listSaved()).filter(x => (x.qids || []).some(id => own.has(id)) && !droppedIds.has(x.id));
+    // une sauvegarde automatique peut être encore en cours d'écriture : on garde les plus récentes en mémoire (< 1 min)
+    const byId = new Map(listed.map(x => [x.id, x]));
+    for (const m of loadSaved()) {
+      const l = byId.get(m.id);
+      if (l ? (m.savedAt || 0) > (l.savedAt || 0) : Date.now() - (m.savedAt || 0) < 60000) byId.set(m.id, m);
+    }
+    state.saved = [...byId.values()].sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0)).slice(0, 20);
     state.savedErr = null;
   }
   catch (e) { console.error(e); state.saved = []; state.savedErr = e; }
 }
+const droppedIds = new Set();
 function dropSaved(id) {
   if (!id) return Promise.resolve();
+  droppedIds.add(id);
   state.saved = loadSaved().filter(x => x.id !== id);
   return state.store.deleteSaved(id).catch(e => console.error(e));
 }
@@ -1141,8 +1150,23 @@ async function saveQuiz(silent = false) {
   const ok = await pushSaved(entry);
   if (!savedErrShown) toast(ok ? t("save.done") : t("save.fail"), ok ? "info" : "err");
 }
-// Après une première sauvegarde manuelle, chaque réponse met à jour la sauvegarde automatiquement.
-const autoSave = () => { if (state.quiz && state.quiz.saveId) saveQuiz(true); };
+/* Sauvegarde automatique : dès la première réponse, sans cliquer sur « Sauvegarder ».
+   Un même QCM (même mode, même chapitre / domaine / test) n'a qu'une sauvegarde : elle n'est remplacée que si
+   le quiz en cours est mieux avancé (plus de questions répondues). */
+const answeredOf = x => (x.picks || []).filter(p => p && p.length).length;
+const qcmKey = x => JSON.stringify([x.mode || "", x.chapter_id ?? null, x.lab ?? null]);
+function autoSave() {
+  const z = state.quiz; if (!z) return;
+  if (!z.saveId) {
+    const done = answeredOf(z); if (!done) return;
+    const same = loadSaved().filter(x => qcmKey(x) === qcmKey(z));
+    const best = same.reduce((a, x) => (!a || answeredOf(x) > answeredOf(a) ? x : a), null);
+    if (best && answeredOf(best) >= done) return;   // la sauvegarde existante est plus avancée : on la garde
+    if (best) z.saveId = best.id;                      // on l'écrase (même QCM, moins avancé)
+    same.filter(x => x !== best).forEach(x => dropSaved(x.id));
+  }
+  saveQuiz(true);
+}
 function resumeQuiz(id) {
   const e = loadSaved().find(x => x.id === id); if (!e) return;
   const byId = new Map(state.questions.map(q => [q.id, q]));

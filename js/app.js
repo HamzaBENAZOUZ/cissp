@@ -105,33 +105,91 @@ function setRate(dir) {
   try { localStorage.setItem("cissp-tts-rate", String(ttsRate)); } catch { /* ignore */ }
   if (player && !player.paused) { haltEngine(); playFrom(player.idx); } else renderPlayer();
 }
+/* Choix de la voix, par langue (appli Android : voix du téléphone ; navigateur : voix du navigateur). */
+const VOICE_KEY = l => `cissp-voice-${l}`;
+const voicePref = l => { try { return localStorage.getItem(VOICE_KEY(l)) || ""; } catch { return ""; } };
+/** Voix disponibles pour une langue : [{ name, label }]. */
+function voiceList(lang) {
+  if (nativeTTS) {
+    if (typeof nativeTTS.voices !== "function") return [];
+    let vs = []; try { vs = JSON.parse(nativeTTS.voices(lang)); } catch { return []; }
+    // déjà triées par l'appli (les plus naturelles d'abord) ; ★ = qualité « élevée » d'Android, 🌐 = demande Internet
+    const country = { "fr-FR": "France", "en-US": "US", "en-GB": "UK" };
+    return vs.slice(0, 12).map((v, i) => {
+      const code = ((/-x-([a-z0-9]+)-/i.exec(v.name) || [])[1] || v.name).toUpperCase();
+      return { name: v.name, label: `${country[v.locale] || v.locale} ${code}${v.q >= 400 ? " ★" : ""}${v.net ? " 🌐" : ""}` };
+    });
+  }
+  if (!canSpeak) return [];
+  // français de France, anglais US et UK ; voix neuronales (« Natural », « Online », « Neural ») d'abord
+  const ok = lang === "fr" ? /^fr[-_]FR$/i : /^en[-_](US|GB)$/i, natural = v => /Natural|Online|Neural|Premium|Enhanced/i.test(v.name);
+  return speechSynthesis.getVoices().filter(v => ok.test(v.lang))
+    .sort((a, b) => natural(b) - natural(a))
+    .map(v => ({ name: v.name, label: `${v.name.replace(/^Microsoft |^Google /, "").replace(/ - .*$/, "")}${natural(v) ? " ★" : ""} (${v.lang.slice(3)})` }));
+}
+function setVoicePref(lang, name) {
+  try { if (name) localStorage.setItem(VOICE_KEY(lang), name); else localStorage.removeItem(VOICE_KEY(lang)); } catch { /* ignore */ }
+  if (nativeTTS && typeof nativeTTS.setVoiceName === "function") nativeTTS.setVoiceName(lang, name || "");
+}
+// l'appli reçoit les voix choisies au démarrage
+if (nativeTTS && typeof nativeTTS.setVoiceName === "function") for (const l of ["fr", "en"]) { const v = voicePref(l); if (v) nativeTTS.setVoiceName(l, v); }
+/** Va à la phrase n° i (boutons précédent / suivant). */
+function gotoUnit(i) {
+  if (!player) return;
+  i = Math.max(0, Math.min(player.units.length - 1, i));
+  player.idx = i;
+  if (player.paused) { hlShow(player.units[i]); renderPlayer(); return; }
+  haltEngine(); playFrom(i);
+}
 /* Barre de lecture fixée en haut de l'écran (visible pendant une lecture, utile en mode paysage). */
 function renderPlayer() {
   let bar = document.getElementById("tts-bar");
   if (!player) { if (bar) bar.hidden = true; return; }
   if (!bar) {
     bar = document.createElement("div"); bar.id = "tts-bar"; bar.className = "tts-bar"; bar.setAttribute("role", "toolbar");
+    bar.innerHTML = `<div class="tts-ctl"></div><select class="tts-voice"></select>`;
     document.body.appendChild(bar);
     bar.addEventListener("click", e => {
-      const b = e.target.closest("button[data-tts-act]"); if (!b) return;
+      const b = e.target.closest("button[data-tts-act]"); if (!b || !player) return;
       const act = b.dataset.ttsAct;
-      if (act === "toggle") (player && player.paused ? resumeSpeak : pauseSpeak)();
+      if (act === "toggle") (player.paused ? resumeSpeak : pauseSpeak)();
       else if (act === "slower") setRate(-1);
       else if (act === "faster") setRate(1);
+      else if (act === "prev") gotoUnit(player.idx - 1);
+      else if (act === "next") gotoUnit(player.idx + 1);
       else if (act === "stop") stopSpeak();
     });
+    bar.querySelector(".tts-voice").addEventListener("change", e => {
+      if (!player) return;
+      setVoicePref(player.lang, e.target.value);
+      if (!player.paused) { haltEngine(); playFrom(player.idx); }   // reprend la phrase avec la nouvelle voix
+    });
   }
-  const fr = getLang() === "fr", paused = player.paused;
+  const fr = getLang() === "fr", paused = player.paused, P = player;
+  const btn = (act, label, body, cls = "") => `<button class="tts-btn${cls}" data-tts-act="${act}" title="${label}" aria-label="${label}">${body}</button>`;
+  const svg = (d, s = 16) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="${d}" fill="currentColor"/></svg>`;
   bar.setAttribute("aria-label", fr ? "Lecture à voix haute" : "Read aloud");
-  bar.innerHTML = `
-    <button class="tts-btn" data-tts-act="slower" title="${fr ? "Ralentir" : "Slower"}" aria-label="${fr ? "Ralentir" : "Slower"}">−</button>
-    <span class="tts-rate">${String(ttsRate).replace(".", fr ? "," : ".")}×</span>
-    <button class="tts-btn" data-tts-act="faster" title="${fr ? "Accélérer" : "Faster"}" aria-label="${fr ? "Accélérer" : "Faster"}">+</button>
-    <button class="tts-btn tts-main" data-tts-act="toggle" title="${paused ? (fr ? "Reprendre" : "Play") : "Pause"}" aria-label="${paused ? (fr ? "Reprendre" : "Play") : "Pause"}">${paused
-      ? '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>'}</button>
-    <span class="tts-pos">${Math.min(player.idx + 1, player.units.length)}/${player.units.length}</span>
-    <button class="tts-btn" data-tts-act="stop" title="${fr ? "Arrêter" : "Stop"}" aria-label="${fr ? "Arrêter" : "Stop"}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 6h12v12H6z" fill="currentColor"/></svg></button>`;
+  bar.querySelector(".tts-ctl").innerHTML =
+    btn("slower", fr ? "Ralentir" : "Slower", "−") +
+    `<span class="tts-rate">${String(ttsRate).replace(".", fr ? "," : ".")}×</span>` +
+    btn("faster", fr ? "Accélérer" : "Faster", "+") +
+    btn("prev", fr ? "Phrase précédente" : "Previous sentence", svg("M6 5h2v14H6zM20 5v14L9 12z")) +
+    btn("toggle", paused ? (fr ? "Reprendre" : "Play") : "Pause",
+      paused ? svg("M8 5v14l11-7z", 18) : svg("M7 5h4v14H7zM13 5h4v14h-4z", 18), " tts-main") +
+    btn("next", fr ? "Phrase suivante" : "Next sentence", svg("M16 5h2v14h-2zM4 5v14l11-7z")) +
+    `<span class="tts-pos">${Math.min(P.idx + 1, P.units.length)}/${P.units.length}</span>` +
+    btn("stop", fr ? "Arrêter" : "Stop", svg("M6 6h12v12H6z"));
+  const sel = bar.querySelector(".tts-voice");
+  const vs = voiceList(P.lang), cur = voicePref(P.lang);
+  const sig = P.lang + "|" + fr + "|" + vs.map(v => v.name).join(",");
+  if (sel.dataset.sig !== sig) {   // la liste n'est refaite que si elle change (sinon le menu ouvert se fermerait)
+    sel.dataset.sig = sig;
+    sel.innerHTML = `<option value="">${fr ? "🗣 Voix : automatique" : "🗣 Voice: automatic"}</option>` +
+      vs.map(v => `<option value="${esc(v.name)}">🗣 ${esc(v.label)}</option>`).join("");
+    sel.title = sel.ariaLabel = fr ? "Choisir la voix" : "Choose the voice";
+  }
+  sel.value = vs.some(v => v.name === cur) ? cur : "";
+  sel.hidden = vs.length < 2;
   bar.hidden = false;
 }
 /**
@@ -147,6 +205,7 @@ const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).fil
    sinon une autre voix neuronale fr-FR, puis toute voix fr-FR, puis toute voix française. */
 function pickVoiceFr() {
   const vs = speechSynthesis.getVoices();
+  const chosen = voicePref("fr") && vs.find(v => v.name === voicePref("fr")); if (chosen) return chosen;
   const fr = vs.filter(v => /^fr[-_]FR$/i.test(v.lang));
   return fr.find(v => /\bDenise\b/i.test(v.name) && /Natural/i.test(v.name))
     || fr.find(v => /Natural|Online/i.test(v.name))
@@ -156,13 +215,15 @@ function pickVoiceFr() {
    sinon n'importe quelle voix Aria en-US, puis une voix « Natural » en-US, puis toute voix en-US, puis anglais. */
 function pickVoice() {
   const vs = speechSynthesis.getVoices();
+  const chosen = voicePref("en") && vs.find(v => v.name === voicePref("en")); if (chosen) return chosen;
   const us = vs.filter(v => /^en[-_]US$/i.test(v.lang));
   return us.find(v => /\bAria\b/i.test(v.name) && /Natural/i.test(v.name))
     || us.find(v => /\bAria\b/i.test(v.name))
     || us.find(v => /Natural|Online/i.test(v.name))
     || us[0] || vs.find(v => /^en/i.test(v.lang)) || null;
 }
-if (canSpeak && !nativeTTS) speechSynthesis.getVoices(); // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
+if (canSpeak && !nativeTTS) speechSynthesis.getVoices();
+try { if ("caches" in window) caches.delete("piper-v1").catch(() => {}); } catch { /* ignore */ }   // anciennes voix Piper (abandonnées) // précharge la liste des voix (chargée en asynchrone par Edge/Chrome)
 // Lecture en français : navigateur, ou application Android 2.3+ (pont speakLang).
 const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "function");
 /* ---- Surlignage de la phrase en cours de lecture ----

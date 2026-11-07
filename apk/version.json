@@ -1,7 +1,7 @@
 {
- "versionCode": 42,
- "versionName": "5.8",
+ "versionCode": 43,
+ "versionName": "5.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture audio (FR / EN) dans l'onglet « Axes d'amélioration »",
- "notes": "Read aloud (EN / FR) in the \"Improvement areas\" tab"
+ "notes_fr": "Nouvel onglet « Résumé Last Mile » : 8 fiches très détaillées en français, une par domaine, avec lecture audio.",
+ "notes": "New \"Last Mile Summary\" tab: 8 very detailed sheets in French, one per domain, with read-aloud."
 }

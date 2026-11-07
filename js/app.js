@@ -486,7 +486,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "5.6";
+const APP_VERSION = "5.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -770,7 +770,7 @@ function mountOffline() {
     if (!slot || !html) return;
     slot.innerHTML = html;
     const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
-    if (dl) dl.onclick = () => downloadOffline(dl);
+    if (dl) dl.onclick = () => { downloadOffline(dl); checkUpdate(true); };   // « Mettre à jour » vérifie aussi la version de l'appli
     const au = document.getElementById("btn-auto");
     if (au) au.onclick = () => toggleAutonomous(au);
     if (rm) rm.onclick = async () => {

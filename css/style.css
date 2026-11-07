@@ -630,3 +630,7 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .exam-pop input[type="date"] { height: 42px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); font: 600 1rem var(--sans, inherit); color-scheme: light dark; }
 .exam-actions { display: flex; gap: 8px; }
 @media (max-width: 560px) { .exam-pill .exam-txt { display: none; } .exam-pill { padding: 0 10px; } }
+
+/* Bouton son (lecture automatique) dans l'en-tête */
+.mute-btn { font-size: 1rem; line-height: 1; }
+.mute-btn.muted { opacity: .75; }

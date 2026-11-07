@@ -394,6 +394,34 @@ const speakBtn = (q, shown = "en", kind = "answer", revealed = true) => {
   return `<button class="btn btn-ghost btn-xs btn-speak" data-speak="${q.id}" data-speaklang="${lang}" data-speakmode="${mode}" lang="${lang}"
     title="${esc(title)} (${lang === "fr" ? "cliquer à nouveau pour arrêter" : "click again to stop"})">🔊 ${esc(label)}</button>`;
 };
+/* Lecture automatique de la correction après chaque réponse (activée par défaut, interrupteur « Auto »). */
+const AUTOREAD_KEY = "cissp-autoread";
+const autoRead = () => { try { return canSpeak && localStorage.getItem(AUTOREAD_KEY) !== "off"; } catch { return canSpeak; } };
+/** Bouton 🔊 / 🔇 dans l'en-tête : coupe la lecture automatique (et la lecture en cours). */
+function renderMute() {
+  if (!canSpeak) return;
+  let b = document.getElementById("btn-mute");
+  if (!b) {
+    b = document.createElement("button"); b.id = "btn-mute"; b.type = "button"; b.className = "icon-btn mute-btn";
+    const right = document.querySelector(".topbar-right"), ex = document.getElementById("btn-exam");
+    right.insertBefore(b, ex ? ex.nextSibling : right.firstChild);
+    b.addEventListener("click", () => {
+      const on = !autoRead();
+      try { localStorage.setItem(AUTOREAD_KEY, on ? "on" : "off"); } catch { /* ignore */ }
+      if (!on) stopSpeak();
+      renderMute();
+      toast(getLang() === "fr" ? (on ? "🔊 Lecture automatique de la correction activée" : "🔇 Lecture automatique coupée")
+        : (on ? "🔊 Automatic reading of the explanation on" : "🔇 Automatic reading off"), "info");
+    });
+  }
+  const on = autoRead(), fr = getLang() === "fr";
+  b.textContent = on ? "🔊" : "🔇";
+  b.classList.toggle("muted", !on);
+  b.setAttribute("aria-pressed", String(!on));
+  b.title = fr ? (on ? "Son activé : la correction est lue après chaque réponse (cliquer pour couper)" : "Son coupé : pas de lecture automatique (cliquer pour activer)")
+    : (on ? "Sound on: the explanation is read after each answer (click to mute)" : "Muted: no automatic reading (click to unmute)");
+  b.setAttribute("aria-label", b.title);
+}
 function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
@@ -536,7 +564,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
-  renderExam();
+  renderExam(); renderMute();
 }
 function rerender() {
   applyStaticTexts();
@@ -1374,6 +1402,8 @@ function toggle(L) {
 function check() {
   const z = state.quiz; if (!z.picks[z.i].length) return;
   z.checked[z.i] = true; autoSave(); renderQuiz();
+  // lecture automatique de la correction (langue affichée, voix et vitesse déjà choisies)
+  if (autoRead()) { const b = app.querySelector('.speak-row [data-speakmode="answer"]'); if (b) b.click(); }
 }
 function move(d) {
   const z = state.quiz;

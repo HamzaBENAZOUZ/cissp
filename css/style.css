@@ -614,3 +614,19 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
   .tts-btn.tts-main { min-width: 42px; height: 42px; }
   .tts-voice { max-width: 100%; flex: 1 1 100%; }
 }
+
+/* Date d'examen : compte à rebours J-x dans l'en-tête */
+.exam-pill { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent); background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--acc); font: 800 .85rem var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.exam-pill:hover { background: color-mix(in srgb, var(--acc) 22%, transparent); }
+.exam-pill.unset { color: var(--muted); border-color: var(--line-2); background: transparent; font-weight: 600; }
+.exam-pill.soon { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 60%, transparent); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.exam-pill.today { color: #fff; border: 0; background: var(--grad); }
+.exam-pop { position: fixed; z-index: 60; top: calc(env(safe-area-inset-top, 0px) + 64px); right: 16px; width: min(300px, calc(100vw - 32px));
+  display: grid; gap: 10px; padding: 14px; box-shadow: 0 18px 40px -16px rgba(0,0,0,.55); background: var(--panel-solid); }
+.exam-pop[hidden] { display: none; }
+.exam-lbl { font: 700 .9rem var(--display); }
+.exam-pop input[type="date"] { height: 42px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text); font: 600 1rem var(--sans, inherit); color-scheme: light dark; }
+.exam-actions { display: flex; gap: 8px; }
+@media (max-width: 560px) { .exam-pill .exam-txt { display: none; } .exam-pill { padding: 0 10px; } }

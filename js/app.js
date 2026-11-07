@@ -457,6 +457,66 @@ function errorPanel(title, msg, hint) {
     ${hint ? `<p class="muted">${esc(hint)}</p>` : ""}</section>`;
 }
 
+// ------------------------------------------------------------------ date d'examen (compte à rebours J-x)
+const EXAM_KEY = "cissp-exam-date";
+const examDate = () => { try { const v = localStorage.getItem(EXAM_KEY) || ""; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ""; } catch { return ""; } };
+/** Jours restants avant l'examen (0 = aujourd'hui, négatif = passé), ou null si pas de date. */
+function examDaysLeft() {
+  const d = examDate(); if (!d) return null;
+  const [y, m, j] = d.split("-").map(Number), now = new Date();
+  return Math.round((Date.UTC(y, m - 1, j) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+}
+function renderExam() {
+  let b = document.getElementById("btn-exam");
+  if (!b) {
+    b = document.createElement("button"); b.id = "btn-exam"; b.type = "button"; b.className = "exam-pill";
+    const right = document.querySelector(".topbar-right"); right.insertBefore(b, right.firstChild);
+    b.addEventListener("click", e => { e.stopPropagation(); toggleExamPop(); });
+  }
+  const fr = getLang() === "fr", n = examDaysLeft(), d = examDate();
+  const when = d ? new Date(d + "T12:00:00").toLocaleDateString(fr ? "fr-FR" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  b.classList.remove("soon", "today", "unset");
+  if (n === null || n < 0) {
+    b.classList.add("unset");
+    b.innerHTML = `📅<span class="exam-txt">${fr ? " Date d'examen" : " Exam date"}</span>`;
+    b.title = n === null ? (fr ? "Indiquer le jour de l'examen pour afficher le compte à rebours" : "Set your exam day to show the countdown")
+      : (fr ? `Examen passé (${when}) : indiquer une nouvelle date` : `Exam passed (${when}): set a new date`);
+  } else {
+    if (n === 0) b.classList.add("today"); else if (n <= 7) b.classList.add("soon");
+    b.innerHTML = n === 0 ? (fr ? "🍀 Jour J" : "🍀 Exam day") : `📅 J-${n}`;
+    b.title = (fr ? `Examen le ${when}` : `Exam on ${when}`) + (n ? (fr ? ` : encore ${n} jour${n > 1 ? "s" : ""}` : `: ${n} day${n > 1 ? "s" : ""} left`) : "");
+  }
+  b.setAttribute("aria-label", b.title);
+}
+function toggleExamPop(force) {
+  let pop = document.getElementById("exam-pop");
+  const open = force ?? !(pop && !pop.hidden);
+  if (!open) { if (pop) pop.hidden = true; return; }
+  const fr = getLang() === "fr", today = new Date(), iso = x => x.toISOString().slice(0, 10);
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "exam-pop"; pop.className = "exam-pop panel"; document.body.appendChild(pop);
+    pop.addEventListener("click", e => e.stopPropagation());
+    document.addEventListener("click", () => toggleExamPop(false));
+    document.addEventListener("keydown", e => { if (e.key === "Escape") toggleExamPop(false); });
+  }
+  const minD = new Date(today.getTime() - today.getTimezoneOffset() * 60000);
+  pop.innerHTML = `<label class="exam-lbl" for="exam-input">${fr ? "📅 Jour de l'examen" : "📅 Exam day"}</label>
+    <input type="date" id="exam-input" value="${examDate()}" min="${iso(minD)}">
+    <div class="exam-actions">
+      <button class="btn btn-primary btn-sm" id="exam-ok">${fr ? "Enregistrer" : "Save"}</button>
+      ${examDate() ? `<button class="btn btn-ghost btn-sm" id="exam-clear">${fr ? "Effacer" : "Clear"}</button>` : ""}
+    </div>`;
+  pop.hidden = false;
+  const inp = pop.querySelector("#exam-input");
+  const save = v => { try { if (v) localStorage.setItem(EXAM_KEY, v); else localStorage.removeItem(EXAM_KEY); } catch { /* ignore */ } renderExam(); toggleExamPop(false); };
+  pop.querySelector("#exam-ok").onclick = () => { if (inp.value) save(inp.value); else inp.focus(); };
+  const clr = pop.querySelector("#exam-clear"); if (clr) clr.onclick = () => save("");
+  inp.addEventListener("keydown", e => { if (e.key === "Enter" && inp.value) save(inp.value); });
+  setTimeout(() => inp.focus(), 50);
+}
+// le compte à rebours change à minuit : on le recalcule quand l'appli revient au premier plan
+document.addEventListener("visibilitychange", () => { if (!document.hidden) renderExam(); });
+
 // ------------------------------------------------------------------ theme & language
 function currentTheme() { return document.documentElement.dataset.theme === "light" ? "light" : "dark"; }
 function setTheme(th) {
@@ -476,6 +536,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
+  renderExam();
 }
 function rerender() {
   applyStaticTexts();

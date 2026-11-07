@@ -1,7 +1,7 @@
 {
- "versionCode": 38,
- "versionName": "5.4",
+ "versionCode": 39,
+ "versionName": "5.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Nouvel onglet « Axes d'amélioration » : tes erreurs par domaine, avec les passages des fiches à relire",
- "notes": "New \"Improvement areas\" tab: your mistakes by domain, with the study sheet passages to read again"
+ "notes_fr": "Vérification des mises à jour plus fréquente ; toucher le numéro de version pour vérifier",
+ "notes": "More frequent update checks; tap the version number to check"
 }

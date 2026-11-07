@@ -486,11 +486,15 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "5.4";
+const APP_VERSION = "5.5";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
   const v = document.createElement("span"); v.id = "app-ver"; v.className = "app-ver"; v.textContent = "v" + APP_VERSION;
+  if (nativeTTS && typeof nativeTTS.appVersion === "function") {   // appli : toucher le numéro = chercher une mise à jour
+    v.title = getLang() === "fr" ? "Chercher une mise à jour" : "Check for updates";
+    v.addEventListener("click", e => { e.preventDefault(); e.stopPropagation(); checkUpdate(true); });
+  }
   brand.appendChild(v);
 }
 // ------------------------------------------------------------------ date d'examen (compte à rebours J-x)
@@ -557,15 +561,18 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) rend
 // La dernière version est publiée sur le site (apk/version.json + apk/cissp-training.apk). L'appli compare
 // avec sa propre version et propose d'installer la nouvelle d'un clic.
 let updateInfo = null, updateChecked = 0;
-async function checkUpdate() {
-  if (!nativeTTS || typeof nativeTTS.appVersion !== "function" || Date.now() - updateChecked < 3600000) return;
+async function checkUpdate(manual = false) {
+  if (!nativeTTS || typeof nativeTTS.appVersion !== "function") return;
+  if (!manual && Date.now() - updateChecked < 120000) return;   // au plus une vérification toutes les 2 min
   updateChecked = Date.now();
+  if (manual) try { sessionStorage.removeItem("cissp-update-later"); } catch { /* ignore */ }
   try {
     const r = await fetch(new URL("apk/version.json", location.href).href + "?t=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return;
     const v = await r.json();
     if (+v.versionCode > nativeTTS.appVersion()) { updateInfo = v; renderUpdate(); }
-  } catch { /* hors ligne */ }
+    else if (manual) toast(getLang() === "fr" ? `Tu as déjà la dernière version (${APP_VERSION}).` : `You already have the latest version (${APP_VERSION}).`, "ok");
+  } catch { if (manual) toast(getLang() === "fr" ? "Vérification impossible : pas de connexion ?" : "Could not check: no connection?", "warn"); }
 }
 function renderUpdate() {
   let bar = document.getElementById("update-bar");

@@ -1,7 +1,7 @@
 {
- "versionCode": 39,
- "versionName": "5.5",
+ "versionCode": 40,
+ "versionName": "5.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Vérification des mises à jour plus fréquente ; toucher le numéro de version pour vérifier",
- "notes": "More frequent update checks; tap the version number to check"
+ "notes_fr": "Onglet « Axes d'amélioration » déplacé à la fin",
+ "notes": "\"Improvement areas\" tab moved to the end"
 }

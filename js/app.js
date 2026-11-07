@@ -862,7 +862,7 @@ function renderHome() {
   <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@${cert}:~$ ./train --mode=qcm --lang=${getLang()}</p>
-    <h1 class="glitch" data-text="${CERT} Training">${CERT} Training</h1>
+    <h1 class="glitch hero-title"><img class="hero-logo" src="assets/logo-cissp.png" alt="" width="64" height="59"><span>${CERT} Training</span></h1>
     ${tabs}
     <p class="muted">${esc(t(subKey, { n: total, c: SC.length }))}</p>
     <div class="stats">

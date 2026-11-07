@@ -82,7 +82,6 @@ const RATES = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
 let ttsRate = (() => { try { const v = parseFloat(localStorage.getItem("cissp-tts-rate")); return RATES.includes(v) ? v : 1; } catch { return 1; } })();
 function haltEngine() {
   speakSeq++;   // invalide les événements de la lecture en cours
-  piperHalt();
   if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel();
 }
 function stopSpeak() {
@@ -94,21 +93,16 @@ function stopSpeak() {
 }
 function pauseSpeak() {
   if (!player || player.paused) return;
-  if (player.piper && audioCtx) { audioCtx.suspend().catch(() => {}); player.suspended = true; }   // Piper : pause au milieu de la phrase
-  else haltEngine();
-  player.paused = true; keepAwake(false); renderPlayer();
+  haltEngine(); player.paused = true; keepAwake(false); renderPlayer();
 }
 function resumeSpeak() {
   if (!player || !player.paused) return;
-  player.paused = false;
-  if (player.suspended) { player.suspended = false; audio(); keepAwake(true); renderPlayer(); return; }
-  playFrom(player.idx);
+  player.paused = false; playFrom(player.idx);
 }
 function setRate(dir) {
   const i = RATES.indexOf(ttsRate);
   ttsRate = RATES[Math.max(0, Math.min(RATES.length - 1, i + dir))];
   try { localStorage.setItem("cissp-tts-rate", String(ttsRate)); } catch { /* ignore */ }
-  if (player && player.suspended) { haltEngine(); player.suspended = false; }   // reprendra la phrase à la nouvelle vitesse
   if (player && !player.paused) { haltEngine(); playFrom(player.idx); } else renderPlayer();
 }
 /* Barre de lecture fixée en haut de l'écran (visible pendant une lecture, utile en mode paysage). */
@@ -178,8 +172,7 @@ const canSpeakFr = canSpeak && (!nativeTTS || typeof nativeTTS.speakLang === "fu
 /* Écran allumé pendant la lecture (navigateur : API Screen Wake Lock ; l'appli Android s'en charge elle-même). */
 let wakeLock = null;
 function keepAwake(on) {
-  if (nativeTTS) { if (typeof nativeTTS.keepScreen === "function") nativeTTS.keepScreen(!!on); return; }
-  if (!("wakeLock" in navigator)) return;
+  if (nativeTTS || !("wakeLock" in navigator)) return;
   if (on) {
     if (!wakeLock) navigator.wakeLock.request("screen").then(l => { if (speakingId && !wakeLock) wakeLock = l; else l.release().catch(() => {}); }).catch(() => {});
   } else if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
@@ -252,7 +245,6 @@ function speakUnits(key, units, lang, btn, onEnd) {
   units = units.filter(u => u.text);
   if (!units.length) { if (onEnd) onEnd(); return; }
   speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
-  if (usePiper(lang)) audio();   // le son doit être débloqué pendant le clic
   player = { key, units, lang, btn, idx: 0, paused: false };
   playFrom(0);
 }
@@ -270,15 +262,6 @@ function playFrom(from) {
     renderPlayer();
   };
   renderPlayer();
-  P.piper = usePiper(lang);
-  if (P.piper) {
-    playPiper(units, lang, mark, done, alive, i => {   // échec : on continue avec la voix du système
-      piperFailed = true; renderVoiceCtl();
-      toast(getLang() === "fr" ? "Voix naturelle indisponible : voix du système utilisée." : "Natural voice unavailable: using the system voice.", "info");
-      if (alive()) playFrom(from + i);
-    });
-    return;
-  }
   const L = lang === "fr" ? "fr-FR" : "en-US";
   if (nativeTTS) {
     if (typeof nativeTTS.setRate === "function") nativeTTS.setRate(ttsRate);
@@ -309,128 +292,6 @@ function playFrom(from) {
     speechSynthesis.speak(u);
   });
 }
-/* ---- Voix naturelles Piper (hors ligne, calculées sur l'appareil) ----
-   Moteur dans js/piper-worker.js ; voix Siwis (français) et Ryan (anglais) téléchargées une fois (≈ 210 Mo),
-   puis gardées dans le cache « piper-v1 ». En cas de problème, on revient à la voix du système. */
-const PIPER_VOICES = { fr: "fr_FR-siwis-medium", en: "en_US-ryan-high" };
-const PIPER_TOTAL = 29.6e6 + 63.2e6 + 120.8e6;   // moteur + Siwis + Ryan (octets, pour la barre de progression)
-const PIPER_PREF = "cissp-piper";
-const PIPER_OK = typeof Worker === "function" && typeof WebAssembly === "object" && "caches" in window && !!(window.AudioContext || window.webkitAudioContext);
-let piperW = null, piperReq = 0, piperFailed = false, piperDl = null;
-const piperCb = {}, piperStored = {};
-let audioCtx = null, audioSrc = null;
-function audio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
-  return audioCtx;
-}
-function piperWorker() {
-  if (!piperW) {
-    piperW = new Worker("js/piper-worker.js");
-    piperW.onmessage = e => {
-      const m = e.data;
-      if (m.type === "progress") { if (piperDl) { piperDl[m.voice] = m.loaded; renderVoiceCtl(); } return; }
-      const cb = piperCb[m.id]; if (!cb) return;
-      delete piperCb[m.id]; if (m.error) cb.reject(new Error(m.error)); else cb.resolve(m);
-    };
-    piperW.onerror = () => {
-      for (const k in piperCb) { piperCb[k].reject(new Error("worker")); delete piperCb[k]; }
-      piperW = null;
-    };
-  }
-  return piperW;
-}
-function piperCall(msg) {
-  return new Promise((resolve, reject) => { const id = ++piperReq; piperCb[id] = { resolve, reject }; piperWorker().postMessage({ id, ...msg }); });
-}
-const piperWanted = () => { try { return localStorage.getItem(PIPER_PREF) !== "off"; } catch { return true; } };
-const usePiper = lang => PIPER_OK && !piperFailed && piperWanted() && !!piperStored[lang];
-function piperHalt() {
-  if (audioSrc) { try { audioSrc.stop(); } catch { /* déjà fini */ } audioSrc = null; }
-  if (piperW) piperW.postMessage({ id: ++piperReq, cmd: "cancel" });
-}
-/** Les voix sont-elles déjà téléchargées ? (lecture directe du cache, sans démarrer le moteur) */
-async function piperCheck() {
-  if (!PIPER_OK) return;
-  try {
-    const c = await caches.open("piper-v1"), base = new URL("vendor/piper/", location.href).href;
-    const eng = !!(await c.match(base + "piper_phonemize.data"));
-    for (const [l, k] of Object.entries(PIPER_VOICES)) {
-      const [loc, name, q] = k.split("-");
-      piperStored[l] = eng && !!(await c.match(`https://huggingface.co/rhasspy/piper-voices/resolve/main/${loc.split("_")[0]}/${loc}/${name}/${q}/${k}.onnx`));
-    }
-  } catch { /* cache indisponible */ }
-  renderVoiceCtl();
-}
-async function piperDownload() {
-  if (piperDl) return;
-  const fr = getLang() === "fr";
-  piperDl = {}; renderVoiceCtl();
-  try {
-    for (const l of ["fr", "en"]) { await piperCall({ cmd: "fetch", voice: PIPER_VOICES[l] }); piperStored[l] = true; }
-    try { localStorage.setItem(PIPER_PREF, "on"); } catch { /* ignore */ }
-    piperFailed = false;
-    toast(fr ? "Voix naturelles prêtes, elles marchent aussi hors ligne." : "Natural voices ready, they also work offline.", "ok");
-  } catch (e) {
-    console.warn("piper", e);
-    toast(fr ? "Téléchargement des voix interrompu. Réessaie avec une bonne connexion." : "Voice download failed. Try again on a good connection.", "err");
-  } finally { piperDl = null; renderVoiceCtl(); }
-}
-async function piperRemove() {
-  const fr = getLang() === "fr";
-  if (!confirm(fr ? "Supprimer les voix naturelles de cet appareil (≈ 210 Mo) ?" : "Remove the natural voices from this device (≈ 210 MB)?")) return;
-  stopSpeak();
-  try { await piperCall({ cmd: "remove", voices: Object.values(PIPER_VOICES), engine: true }); } catch { /* ignore */ }
-  for (const l in piperStored) piperStored[l] = false;
-  renderVoiceCtl();
-}
-/** Joue les phrases avec Piper : la phrase suivante est calculée pendant que la précédente est lue. */
-async function playPiper(units, lang, mark, done, alive, fallback) {
-  const voice = PIPER_VOICES[lang], rate = ttsRate, ctx = audio();
-  const synth = i => { const p = piperCall({ cmd: "synth", voice, text: units[i].text, rate }); p.catch(() => {}); return p; };
-  let next = synth(0);
-  for (let i = 0; i < units.length; i++) {
-    let r;
-    try { r = await next; } catch (e) { if (alive()) { console.warn("piper", e); fallback(i); } return; }
-    if (!alive()) return;
-    if (i + 1 < units.length) next = synth(i + 1);
-    const buf = ctx.createBuffer(1, r.pcm.length, r.sampleRate);
-    buf.copyToChannel(r.pcm, 0);
-    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
-    mark(i);
-    await new Promise(res => { src.onended = res; audioSrc = src; src.start(); });
-    if (!alive()) return;
-  }
-  audioSrc = null; done();
-}
-/** Commande « Voix naturelle » de la barre du haut : télécharger, activer / désactiver, supprimer. */
-function voiceCtl() {
-  if (!PIPER_OK || !canSpeak) return "";
-  const fr = getLang() === "fr";
-  if (piperDl) {
-    const got = Object.values(piperDl).reduce((a, b) => a + b, 0);
-    return `<button class="btn btn-ghost btn-xs" disabled>🎙️ ${Math.min(99, Math.floor(got * 100 / PIPER_TOTAL))} %</button>`;
-  }
-  if (!piperStored.fr || !piperStored.en)
-    return `<button class="btn btn-ghost btn-xs" id="btn-voice-dl" title="${esc(fr ? "Voix Siwis (français) et Ryan (anglais), plus naturelles, utilisables hors ligne. Téléchargement unique d'environ 210 Mo." : "Siwis (French) and Ryan (English) voices, more natural, usable offline. One-time download of about 210 MB.")}">🎙️ ${fr ? "Voix naturelles (210 Mo)" : "Natural voices (210 MB)"}</button>`;
-  const on = piperWanted() && !piperFailed;
-  return `<button class="switch switch-sm${on ? " on" : ""}" id="btn-voice" role="switch" aria-checked="${on}" title="${esc(fr ? "Voix naturelles Siwis / Ryan (sinon : voix du système)" : "Natural Siwis / Ryan voices (otherwise: system voice)")}"><span class="knob"></span><span class="mono">🎙️ ${fr ? "Voix naturelle" : "Natural voice"} ${on ? "ON" : "OFF"}</span></button>
-    <button class="btn btn-ghost btn-xs" id="btn-voice-rm" title="${esc(fr ? "Supprimer les voix naturelles de cet appareil" : "Remove the natural voices from this device")}" aria-label="${esc(fr ? "Supprimer les voix" : "Remove voices")}">✕</button>`;
-}
-function renderVoiceCtl() {
-  const slot = document.getElementById("voice-ctl"); if (!slot) return;
-  slot.innerHTML = voiceCtl();
-  const dl = document.getElementById("btn-voice-dl"), sw = document.getElementById("btn-voice"), rm = document.getElementById("btn-voice-rm");
-  if (dl) dl.onclick = piperDownload;
-  if (rm) rm.onclick = piperRemove;
-  if (sw) sw.onclick = () => {
-    const on = !(piperWanted() && !piperFailed);
-    piperFailed = false;
-    try { localStorage.setItem(PIPER_PREF, on ? "on" : "off"); } catch { /* ignore */ }
-    stopSpeak(); renderVoiceCtl();
-  };
-}
-piperCheck();
 /** Lecture d'une question (page du quiz ou correction) : le texte lu est celui affiché dans la boîte de la question. */
 function quizParts(q, box, lang, mode) {
   const fr = lang === "fr", el = k => box.querySelector(`[data-tts="${k}"]`);
@@ -678,7 +539,7 @@ async function toggleAutonomous(btn) {
 }
 
 async function offlinePanel() {
-  if (state.store.kind !== "supabase") return PIPER_OK && canSpeak ? `<div class="offline-bar"><span id="voice-ctl" class="voice-ctl"></span></div>` : "";
+  if (state.store.kind !== "supabase") return "";
   const on = offlineEnabled(), info = on ? await state.store.offlineInfo() : null;
   const status = !on ? t("off.desc")
     : t("off.status", { n: info.n, d: info.at ? fmtDate(info.at) : "?" }) + (info.pending ? " " + t("off.pending", { n: info.pending }) : "");
@@ -690,7 +551,6 @@ async function offlinePanel() {
     ${on ? `<button class="btn btn-ghost btn-xs" id="btn-off-dl" ${busy}>${esc(t("off.update"))}</button>
       <button class="btn btn-ghost btn-xs" id="btn-off-rm" ${busy}>${esc(t("off.remove"))}</button>`
       : `<button class="btn btn-primary btn-xs" id="btn-off-dl">${esc(t("off.download"))}</button>`}
-    ${PIPER_OK && canSpeak ? `<span id="voice-ctl" class="voice-ctl"></span>` : ""}
   </div>`;
 }
 /** Affiche la barre « Hors ligne » dans #offline-slot de la vue courante et branche ses boutons. */
@@ -699,7 +559,6 @@ function mountOffline() {
     const slot = document.getElementById("offline-slot");
     if (!slot || !html) return;
     slot.innerHTML = html;
-    renderVoiceCtl();
     const dl = document.getElementById("btn-off-dl"), rm = document.getElementById("btn-off-rm");
     if (dl) dl.onclick = () => downloadOffline(dl);
     const au = document.getElementById("btn-auto");

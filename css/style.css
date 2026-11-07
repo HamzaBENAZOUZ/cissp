@@ -600,7 +600,3 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tts-pos { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding: 0 4px; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 60px); } }
 @media (orientation: landscape) and (max-height: 500px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 8px); right: max(12px, env(safe-area-inset-right, 0px)); left: auto; transform: none; } }
-
-/* Commande « Voix naturelle » (Piper) dans la barre du haut */
-.voice-ctl { display: inline-flex; align-items: center; gap: .4rem; }
-.voice-ctl:empty { display: none; }

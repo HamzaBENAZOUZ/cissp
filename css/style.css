@@ -642,3 +642,6 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
   box-shadow: 0 18px 40px -16px rgba(0,0,0,.55); }
 .update-txt { display: grid; gap: 2px; min-width: 0; flex: 1 1 220px; }
 .update-actions { display: flex; gap: 8px; }
+
+/* Numéro de version, discret, à côté du nom */
+.app-ver { align-self: flex-start; margin-left: 2px; font: 600 .62rem var(--mono); letter-spacing: .04em; color: var(--muted); opacity: .8; }

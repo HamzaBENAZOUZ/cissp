@@ -485,6 +485,14 @@ function errorPanel(title, msg, hint) {
     ${hint ? `<p class="muted">${esc(hint)}</p>` : ""}</section>`;
 }
 
+// Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
+const APP_VERSION = "5.3";
+function renderVersion() {
+  if (document.getElementById("app-ver")) return;
+  const brand = document.querySelector(".brand"); if (!brand) return;
+  const v = document.createElement("span"); v.id = "app-ver"; v.className = "app-ver"; v.textContent = "v" + APP_VERSION;
+  brand.appendChild(v);
+}
 // ------------------------------------------------------------------ date d'examen (compte à rebours J-x)
 const EXAM_KEY = "cissp-exam-date";
 const examDate = () => { try { const v = localStorage.getItem(EXAM_KEY) || ""; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ""; } catch { return ""; } };
@@ -601,7 +609,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
-  renderExam(); renderMute(); if (updateInfo) renderUpdate();
+  renderExam(); renderMute(); renderVersion(); if (updateInfo) renderUpdate();
 }
 function rerender() {
   applyStaticTexts();

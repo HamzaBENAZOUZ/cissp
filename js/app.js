@@ -545,6 +545,43 @@ function toggleExamPop(force) {
 // le compte à rebours change à minuit : on le recalcule quand l'appli revient au premier plan
 document.addEventListener("visibilitychange", () => { if (!document.hidden) renderExam(); });
 
+// ------------------------------------------------------------------ mise à jour de l'appli Android
+// La dernière version est publiée sur le site (apk/version.json + apk/cissp-training.apk). L'appli compare
+// avec sa propre version et propose d'installer la nouvelle d'un clic.
+let updateInfo = null, updateChecked = 0;
+async function checkUpdate() {
+  if (!nativeTTS || typeof nativeTTS.appVersion !== "function" || Date.now() - updateChecked < 3600000) return;
+  updateChecked = Date.now();
+  try {
+    const r = await fetch(new URL("apk/version.json", location.href).href + "?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const v = await r.json();
+    if (+v.versionCode > nativeTTS.appVersion()) { updateInfo = v; renderUpdate(); }
+  } catch { /* hors ligne */ }
+}
+function renderUpdate() {
+  let bar = document.getElementById("update-bar");
+  const v = updateInfo, skip = (() => { try { return sessionStorage.getItem("cissp-update-later"); } catch { return null; } })();
+  if (!v || skip === String(v.versionCode)) { if (bar) bar.remove(); return; }
+  const fr = getLang() === "fr";
+  if (!bar) { bar = document.createElement("div"); bar.id = "update-bar"; bar.className = "update-bar"; document.body.appendChild(bar); }
+  const notes = (fr ? v.notes_fr || v.notes : v.notes || v.notes_fr) || "";
+  bar.innerHTML = `<div class="update-txt"><strong>⬆️ ${fr ? `Nouvelle version ${esc(v.versionName)} disponible` : `New version ${esc(v.versionName)} available`}</strong>
+      ${notes ? `<span class="muted small">${esc(notes)}</span>` : ""}</div>
+    <div class="update-actions">
+      <button class="btn btn-primary btn-sm" id="update-go">${fr ? "Installer" : "Install"}</button>
+      <button class="btn btn-ghost btn-sm" id="update-later">${fr ? "Plus tard" : "Later"}</button>
+    </div>`;
+  bar.querySelector("#update-go").onclick = () => {
+    nativeTTS.installUpdate(new URL(v.apk || "apk/cissp-training.apk", new URL("apk/", location.href)).href + "?v=" + v.versionCode);
+    toast(fr ? "Téléchargement de la nouvelle version… l'installation se lance ensuite." : "Downloading the new version… installation starts next.", "info");
+  };
+  bar.querySelector("#update-later").onclick = () => { try { sessionStorage.setItem("cissp-update-later", String(v.versionCode)); } catch { /* ignore */ } bar.remove(); };
+}
+window.__updateFailed = () => toast(getLang() === "fr" ? "Installation impossible : réessaie, ou télécharge l'APK depuis le site." : "Install failed: try again, or download the APK from the site.", "err");
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
+setTimeout(checkUpdate, 3000);
+
 // ------------------------------------------------------------------ theme & language
 function currentTheme() { return document.documentElement.dataset.theme === "light" ? "light" : "dark"; }
 function setTheme(th) {
@@ -564,7 +601,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
-  renderExam(); renderMute();
+  renderExam(); renderMute(); if (updateInfo) renderUpdate();
 }
 function rerender() {
   applyStaticTexts();

@@ -600,3 +600,17 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tts-pos { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding: 0 4px; font-variant-numeric: tabular-nums; }
 @media (max-width: 560px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 60px); } }
 @media (orientation: landscape) and (max-height: 500px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 8px); right: max(12px, env(safe-area-inset-right, 0px)); left: auto; transform: none; } }
+
+/* Barre de lecture : précédent / suivant et choix de la voix */
+.tts-bar { flex-wrap: wrap; justify-content: center; border-radius: 26px; }
+.tts-ctl { display: flex; align-items: center; gap: 6px; }
+.tts-voice { max-width: 220px; height: 38px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2);
+  background: var(--bg-2); color: var(--text); font: 600 .82rem var(--sans, inherit); cursor: pointer; }
+.tts-voice[hidden] { display: none; }
+@media (max-width: 560px) {
+  .tts-bar { gap: 6px 4px; padding: 6px; }
+  .tts-ctl { gap: 4px; }
+  .tts-btn { min-width: 34px; height: 34px; padding: 0 8px; }
+  .tts-btn.tts-main { min-width: 42px; height: 42px; }
+  .tts-voice { max-width: 100%; flex: 1 1 100%; }
+}

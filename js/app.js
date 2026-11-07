@@ -133,6 +133,9 @@ function setVoicePref(lang, name) {
 }
 // l'appli reçoit les voix choisies au démarrage
 if (nativeTTS && typeof nativeTTS.setVoiceName === "function") for (const l of ["fr", "en"]) { const v = voicePref(l); if (v) nativeTTS.setVoiceName(l, v); }
+const canInstallVoices = !!nativeTTS && typeof nativeTTS.openVoiceSettings === "function";
+// retour dans l'appli (après l'installation de voix) : la liste des voix est relue
+document.addEventListener("visibilitychange", () => { if (!document.hidden && player) renderPlayer(); });
 /** Va à la phrase n° i (boutons précédent / suivant). */
 function gotoUnit(i) {
   if (!player) return;
@@ -161,6 +164,10 @@ function renderPlayer() {
     });
     bar.querySelector(".tts-voice").addEventListener("change", e => {
       if (!player) return;
+      if (e.target.value === "__install") {   // appli : écran Android de téléchargement des voix
+        e.target.value = voicePref(player.lang); e.target.dataset.sig = "";
+        pauseSpeak(); nativeTTS.openVoiceSettings(); return;
+      }
       setVoicePref(player.lang, e.target.value);
       if (!player.paused) { haltEngine(); playFrom(player.idx); }   // reprend la phrase avec la nouvelle voix
     });
@@ -185,11 +192,12 @@ function renderPlayer() {
   if (sel.dataset.sig !== sig) {   // la liste n'est refaite que si elle change (sinon le menu ouvert se fermerait)
     sel.dataset.sig = sig;
     sel.innerHTML = `<option value="">${fr ? "🗣 Voix : automatique" : "🗣 Voice: automatic"}</option>` +
-      vs.map(v => `<option value="${esc(v.name)}">🗣 ${esc(v.label)}</option>`).join("");
+      vs.map(v => `<option value="${esc(v.name)}">🗣 ${esc(v.label)}</option>`).join("") +
+      (canInstallVoices ? `<option value="__install">${fr ? "➕ Installer d'autres voix…" : "➕ Install more voices…"}</option>` : "");
     sel.title = sel.ariaLabel = fr ? "Choisir la voix" : "Choose the voice";
   }
   sel.value = vs.some(v => v.name === cur) ? cur : "";
-  sel.hidden = vs.length < 2;
+  sel.hidden = vs.length < 2 && !canInstallVoices;
   bar.hidden = false;
 }
 /**

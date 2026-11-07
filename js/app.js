@@ -486,7 +486,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "5.7";
+const APP_VERSION = "5.8";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1011,7 +1011,8 @@ function impExtracts(q, k = 2) {
 }
 const IMP_CERT = "cissp";
 const IMP_PANE = { mem: { fr: "À mémoriser", en: "To memorize" }, tips: { fr: "Préparer l'examen", en: "Exam prep" }, sum: { fr: "Résumé", en: "Summary" } };
-let impDom = null;   // domaine affiché dans l'onglet
+let impDom = null;
+const impCanSpeak = () => canSpeak && (getLang() === "en" || canSpeakFr);   // domaine affiché dans l'onglet
 function renderImprove() {
   const lang = getLang(), fr = lang === "fr";
   const wrong = mistakes();
@@ -1032,12 +1033,13 @@ function renderImprove() {
     const reads = ex.best.map(x => {
       const c = chById(x.ch);
       return `<li><button class="imp-ch mono" data-imp-rev="${x.ch}" data-imp-pane="${x.pane}" title="${esc(fr ? "Ouvrir la fiche de révision" : "Open the study sheet")}">${esc(chLabel(x.ch))}</button>
-        <span class="muted small">${esc(chTitle(c))} · ${esc(IMP_PANE[x.pane][lang])}</span><br>${esc(impLineText(x, lang))}</li>`;
+        <span class="muted small">${esc(chTitle(c))} · ${esc(IMP_PANE[x.pane][lang])}</span><br><span class="imp-read-txt">${esc(impLineText(x, lang))}</span></li>`;
     }).join("");
-    return `<details class="imp-q">
+    return `<details class="imp-q" data-impq="${q.id}">
       <summary><span class="mono muted small">${esc(chLabel(q.chapter_id))}</span> ${esc(String(tx.question).slice(0, 160))}${String(tx.question).length > 160 ? "…" : ""}</summary>
       <div class="imp-body">
-        ${tx.scenario ? `<p class="muted">${esc(tx.scenario)}</p>` : ""}
+        ${impCanSpeak() ? `<div class="row"><button class="btn btn-ghost btn-xs btn-speak" data-imp-speak="${q.id}" lang="${lang}">🔊 ${fr ? "Lire" : "Listen"}</button></div>` : ""}
+        ${tx.scenario ? `<p class="muted imp-scen">${esc(tx.scenario)}</p>` : ""}
         <p class="imp-qtext">${esc(tx.question)}</p>
         <p class="imp-lbl ok">✓ ${esc(fr ? ((q.correct || []).length > 1 ? "Bonnes réponses" : "Bonne réponse") : "Correct answer")}</p>
         <ul class="imp-correct">${corr}</ul>
@@ -1056,7 +1058,8 @@ function renderImprove() {
     qs.forEach(q => impExtracts(q).best.slice(0, 1).forEach(x => chs.set(x.ch, (chs.get(x.ch) || 0) + 1)));
     const top = [...chs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
     return `<div class="domain-head"><h2><span class="mono accent">${d ? "D" + d : "?"}</span> ${esc(domName(d))}</h2>
-        <button class="btn btn-ghost btn-sm" data-imp-quiz="${d}">${esc(fr ? `Refaire ces ${qs.length} questions` : `Retry these ${qs.length} questions`)}</button></div>
+        <div class="row">${impCanSpeak() ? `<button class="btn btn-ghost btn-sm btn-speak" data-imp-speakall lang="${lang}">🔊 ${fr ? "Lire tout le domaine" : "Listen to the whole domain"}</button>` : ""}
+        <button class="btn btn-ghost btn-sm" data-imp-quiz="${d}">${esc(fr ? `Refaire ces ${qs.length} questions` : `Retry these ${qs.length} questions`)}</button></div></div>
       <p class="imp-stats"><span class="imp-err">${qs.length} ${fr ? (qs.length > 1 ? "erreurs" : "erreur") : (qs.length > 1 ? "mistakes" : "mistake")}</span>
         ${r !== null ? `<span class="muted">· ${r} % ${fr ? "de réussite sur ce domaine" : "success on this domain"}</span>` : ""}</p>
       ${top.length ? `<div class="imp-prio"><span class="muted small">${fr ? "Chapitres à relire en priorité :" : "Chapters to read again first:"}</span>
@@ -1076,6 +1079,27 @@ function renderImprove() {
   </section>
   ${blocks || `<section class="panel"><p>${fr ? "Aucune erreur pour l'instant : fais quelques QCM, tes axes d'amélioration apparaîtront ici." : "No mistakes yet: take a few quizzes and your improvement areas will show up here."}</p></section>`}`;
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => { stopSpeak(); setSection(b.dataset.section); });
+  /** Morceaux lus pour une question (texte pris dans la page, dans la langue affichée). */
+  const impParts = det => {
+    const el = sel => det.querySelector(sel), all = sel => [...det.querySelectorAll(sel)].map(e => ({ el: e }));
+    return [fr ? "Question" : "Question", { el: el(".imp-scen") }, { el: el(".imp-qtext") },
+      el(".imp-lbl.ok") ? el(".imp-lbl.ok").textContent.replace(/^✓\s*/, "") : "", ...all(".imp-correct li"),
+      el(".imp-exp") ? (fr ? "Explication" : "Explanation") : "", { el: el(".imp-exp") },
+      el(".imp-reads") ? (fr ? "À relire" : "Read again") : "", ...all(".imp-read-txt")].filter(x => x && (typeof x === "string" || x.el));
+  };
+  app.querySelectorAll("[data-imp-speak]").forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    const det = b.closest(".imp-q");
+    speakUnits("imp:" + b.dataset.impSpeak + ":" + lang, speechUnits(impParts(det), lang), lang, b);
+  });
+  app.querySelectorAll("[data-imp-speakall]").forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const dets = [...app.querySelectorAll(".imp-pane .imp-q")];
+    dets.forEach(d => { d.open = true; });
+    const parts = [];
+    dets.forEach((d, i) => parts.push((fr ? "Question " : "Question ") + (i + 1) + ".", ...impParts(d).slice(1)));
+    speakUnits("imp:dom:" + impDom + ":" + lang, speechUnits(parts, lang), lang, b);
+  });
   app.querySelectorAll("[data-imp-dom]").forEach(b => b.onclick = () => { impDom = +b.dataset.impDom; renderImprove(); });
   app.querySelectorAll("[data-imp-quiz]").forEach(b => b.onclick = () => {
     const d = +b.dataset.impQuiz, qs = byDom.get(d) || [];

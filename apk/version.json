@@ -1,7 +1,7 @@
 {
- "versionCode": 41,
- "versionName": "5.7",
+ "versionCode": 42,
+ "versionName": "5.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Le bouton « Mettre à jour » vérifie aussi s'il y a une nouvelle version de l'appli",
- "notes": "The \"Update\" button also checks for a new app version"
+ "notes_fr": "Lecture audio (FR / EN) dans l'onglet « Axes d'amélioration »",
+ "notes": "Read aloud (EN / FR) in the \"Improvement areas\" tab"
 }

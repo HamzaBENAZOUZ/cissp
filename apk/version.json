@@ -1,7 +1,7 @@
 {
- "versionCode": 40,
- "versionName": "5.6",
+ "versionCode": 41,
+ "versionName": "5.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Onglet « Axes d'amélioration » déplacé à la fin",
- "notes": "\"Improvement areas\" tab moved to the end"
+ "notes_fr": "Le bouton « Mettre à jour » vérifie aussi s'il y a une nouvelle version de l'appli",
+ "notes": "The \"Update\" button also checks for a new app version"
 }

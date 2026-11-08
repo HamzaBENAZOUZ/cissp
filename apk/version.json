@@ -1,7 +1,7 @@
 {
- "versionCode": 48,
- "versionName": "6.4",
+ "versionCode": 49,
+ "versionName": "6.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Choix de la voix sur la télé (en haut à gauche) et alerte quand aucune voix anglaise n'est installée sur l'appareil.",
- "notes": "Voice picker on the TV (top left) and a warning when no English voice is installed on the device."
+ "notes_fr": "Télé : le surlignage jaune reste affiché pendant la lecture des fiches.",
+ "notes": "TV: the yellow highlight stays visible while reading sheets."
 }

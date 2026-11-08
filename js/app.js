@@ -503,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.4";
+const APP_VERSION = "6.5";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -788,6 +788,9 @@ function renderTv() {
       if (m.t === "hi") { link.send({ t: "here" }); return; }
       if (m.t === "bye") { tvLast = null; stopSpeak(); tvRender(); return; }
       if (m.t === "idle") { tvLast = { t: "idle", ui: m.lang }; stopSpeak(); tvRender(); return; }
+      // Même contenu renvoyé par le téléphone (il se réaffiche souvent) : on ne touche pas à l'écran, sinon la lecture
+      // en cours perd le surlignage (les phrases surlignées appartiennent à l'ancien affichage).
+      if ((m.t === "q" || m.t === "sheet") && tvLast && JSON.stringify(m) === JSON.stringify(tvLast)) return;
       if (m.t === "q") {
         const same = tvLast && tvLast.t === "q" && tvLast.n === m.n && tvLast.question === m.question && tvLast.checked === m.checked;
         if (!same) stopSpeak();

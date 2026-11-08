@@ -4,3 +4,6 @@ private/
 .DS_Store
 Thumbs.db
 __pycache__/
+
+# Fichiers SQL (schéma, migrations) : gardés hors du dépôt public
+*.sql

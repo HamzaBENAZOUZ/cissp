@@ -1,7 +1,7 @@
 {
- "versionCode": 46,
- "versionName": "6.2",
+ "versionCode": 47,
+ "versionName": "6.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode télé : les fiches (Révision, Résumé Last Mile, Livre) s'affichent et se lisent aussi sur la télé.",
- "notes": "TV mode: study sheets (Review, Last Mile Summary, Book) also show and play on the TV."
+ "notes_fr": "Mode télé : le choix de la voix revient, en haut à gauche à côté du logo.",
+ "notes": "TV mode: voice picker is back, top left next to the logo."
 }

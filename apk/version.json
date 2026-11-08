@@ -1,7 +1,7 @@
 {
- "versionCode": 44,
- "versionName": "6.0",
+ "versionCode": 45,
+ "versionName": "6.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode télé : la même appli s'installe sur Android TV. Touche 📺 sur le téléphone et tape le code affiché sur la télé : les questions et la lecture audio passent sur la télé, tu réponds sur le téléphone.",
- "notes": "TV mode: the same app installs on Android TV. Tap 📺 on the phone and type the code shown on the TV: questions and audio play on the TV, you answer on the phone."
+ "notes_fr": "Mode télé : en-tête réduit au logo, commande audio discrète tout en haut à droite.",
+ "notes": "TV mode: header reduced to the logo, discreet audio controls at the top right."
 }

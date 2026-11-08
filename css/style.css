@@ -697,3 +697,11 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tv-quiz .scenario p { font-size: 1.2rem; }
 .tv-mode .quiz { max-width: 1400px; }
 .tv-mode .footer { display: none; }
+/* Télé : en-tête réduit au logo, commande audio discrète tout en haut à droite */
+.tv-mode #mode-badge, .tv-mode .brand-text, .tv-mode #app-ver { display: none; }
+.tv-mode .topbar { padding-top: 6px; padding-bottom: 6px; }
+.tv-mode .tts-bar { top: 10px; right: 18px; left: auto; transform: none; padding: 2px 8px; gap: 4px; font-size: 13px;
+  background: color-mix(in srgb, var(--bg-2, #111) 55%, transparent); box-shadow: none; opacity: .6; border-radius: 18px; }
+.tv-mode .tts-bar:hover, .tv-mode .tts-bar:focus-within { opacity: 1; }
+.tv-mode .tts-bar .tts-voice { display: none; }
+.tv-mode .tts-bar .tts-btn { transform: scale(.85); }

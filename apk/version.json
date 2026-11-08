@@ -1,7 +1,7 @@
 {
- "versionCode": 51,
- "versionName": "6.7",
+ "versionCode": 52,
+ "versionName": "6.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : écoute les fiches (Résumé Last Mile, Révision, Livre) et des quiz audio en voiture, avec lecture, pause, suivant/précédent et phrase précédente/suivante.",
- "notes": "Android Auto: listen to the study sheets (Last Mile Summary, Review, Book) and audio quizzes in the car, with play, pause, next/previous and previous/next sentence."
+ "notes_fr": "Android Auto : la phrase en cours de lecture s'affiche sur l'écran de la voiture.",
+ "notes": "Android Auto: the sentence being read is shown on the car screen."
 }

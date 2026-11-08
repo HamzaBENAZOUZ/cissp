@@ -1,7 +1,7 @@
 {
- "versionCode": 59,
- "versionName": "7.5",
+ "versionCode": 60,
+ "versionName": "7.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode Speed sur la télé : le chrono s'affiche en bas à gauche de la télé, et le téléphone attend la fin de la lecture sur la télé avant de lancer le chrono.",
- "notes": "Speed mode on the TV: the timer shows at the bottom left of the TV, and the phone waits for the TV to finish reading before starting the timer."
+ "notes_fr": "Lecture vocale plus fiable dans l'appli : une fin de phrase arrivée en retard ne coupe plus la lecture suivante (mode Speed : dernière proposition sautée).",
+ "notes": "More reliable reading in the app: a late end-of-sentence no longer cuts the next reading (Speed mode: last option skipped)."
 }

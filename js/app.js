@@ -367,8 +367,12 @@ function playFrom(from) {
   if (nativeTTS) {
     if (typeof nativeTTS.setRate === "function") nativeTTS.setRate(ttsRate);
     if (typeof nativeTTS.speakParts === "function") {   // appli récente : toutes les phrases d'un coup, repère à chaque phrase
-      window.__ttsMark = mark; window.__ttsDone = done;
-      nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L);
+      // L'appli renvoie l'identifiant de cette lecture : une marque ou une fin d'une lecture précédente, arrivée en
+      // retard, est ignorée (sinon elle coupait cette lecture : dernière proposition sautée, enchaînement trop rapide).
+      let sid = null;
+      window.__ttsMark = (i, x) => { if (sid && typeof x === "string" && x !== sid) return; mark(i); };
+      window.__ttsDone = x => { if (sid && typeof x === "string" && x !== sid) return; done(); };
+      sid = nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L) || null;
     } else {   // appli plus ancienne : une phrase après l'autre
       let i = 0;
       const next = () => {
@@ -683,7 +687,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.5";
+const APP_VERSION = "7.6";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

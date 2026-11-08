@@ -376,10 +376,14 @@ function playFrom(from) {
     if (typeof nativeTTS.speakParts === "function") {   // appli récente : toutes les phrases d'un coup, repère à chaque phrase
       // L'appli renvoie l'identifiant de cette lecture : une marque ou une fin d'une lecture précédente, arrivée en
       // retard, est ignorée (sinon elle coupait cette lecture : dernière proposition sautée, enchaînement trop rapide).
-      let sid = null;
-      window.__ttsMark = (i, x) => { if (sid && typeof x === "string" && x !== sid) return; mark(i); };
-      window.__ttsDone = x => { if (sid && typeof x === "string" && x !== sid) return; done(); };
-      sid = nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L) || null;
+      let sid = null, heard = false;
+      window.__ttsMark = (i, x) => { if (sid && typeof x === "string" && x !== sid) return; heard = true; mark(i); };
+      window.__ttsDone = x => { if (sid && typeof x === "string" && x !== sid) return; heard = true; done(); };
+      const go = () => { sid = nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L) || null; };
+      go();
+      // Le moteur vocal d'Android ne démarre parfois pas (souvent la toute première lecture, moteur endormi) :
+      // si rien n'a commencé au bout de 2,5 s, on relance une fois.
+      setTimeout(() => { if (!heard && alive() && !P.paused && !P.retried) { P.retried = true; go(); } }, 2500);
     } else {   // appli plus ancienne : une phrase après l'autre
       let i = 0;
       const next = () => {
@@ -694,7 +698,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.7";
+const APP_VERSION = "7.8";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

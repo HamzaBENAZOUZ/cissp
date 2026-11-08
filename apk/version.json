@@ -1,7 +1,7 @@
 {
- "versionCode": 61,
- "versionName": "7.7",
+ "versionCode": 62,
+ "versionName": "7.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture plus rapide au changement de question : la liste des voix n'est plus relue à chaque phrase.",
- "notes": "Faster reading start on a new question: the voice list is no longer re-read for every sentence."
+ "notes_fr": "Mode Speed : si la voix ne démarre pas (souvent à la première question), la lecture est relancée automatiquement.",
+ "notes": "Speed mode: if the voice does not start (often on the first question), reading is restarted automatically."
 }

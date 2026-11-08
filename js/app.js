@@ -503,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.8";
+const APP_VERSION = "6.9";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -888,8 +888,9 @@ function exportAuto() {
   if (!nativeTTS || typeof nativeTTS.saveAuto !== "function" || !state.questions) return;
   try {
     const lang = getLang(), fr = lang === "fr";
-    const clean = l => l.startsWith("## ") ? l.slice(3) + "." : l.startsWith("- ") ? l.slice(2) : l;
-    const lines = (r, panes, L = lang) => panes.flatMap(p => [t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
+    // « § » = début de section : le lecteur de la voiture permet d'y sauter (section suivante / précédente, liste des sections).
+    const clean = l => l.startsWith("## ") ? "§ " + l.slice(3) + "." : l.startsWith("- ") ? l.slice(2) : l;
+    const lines = (r, panes, L = lang) => panes.flatMap(p => ["§ " + t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
     const groups = [];
     groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
       items: LMSUM.map(r => ({ title: (fr ? "Domaine " : "Domain ") + r.id + " · " + domainName(r.id, "cissp"), subtitle: t("lms.tab", {}, lang),
@@ -929,7 +930,7 @@ function exportAuto() {
     const cs = [...own("guide"), ...own("practice")];
     if (cs.length) groups.push({ title: fr ? "Quiz audio · CISSP" : "Audio quiz · CISSP",
       subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? cs.filter(hasFr).length ? cs.filter(hasFr) : cs : cs, 40).map(quizItem) });
-    nativeTTS.saveAuto(JSON.stringify({ v: 1, lang, rate: ttsRate, pauseMs: 6000,
+    nativeTTS.saveAuto(JSON.stringify({ v: 2, lang, rate: ttsRate, pauseMs: 6000,
       voice: { fr: voicePref("fr"), en: voicePref("en") }, groups }));
   } catch (e) { console.error("exportAuto", e); }
 }

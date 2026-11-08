@@ -115,7 +115,8 @@ const voicePref = l => { try { return localStorage.getItem(VOICE_KEY(l)) || ""; 
 const noVoiceWarned = new Set();
 function warnNoVoice(lang) {
   if (noVoiceWarned.has(lang) || typeof nativeTTS.voices !== "function") return;
-  if (voiceList(lang).length || !voiceList(lang === "fr" ? "en" : "fr").length) return;   // voix présente, ou moteur pas prêt
+  if (voiceList(lang).length) { noVoiceWarned.add(lang); return; }   // voix présente : plus besoin de vérifier
+  if (!voiceList(lang === "fr" ? "en" : "fr").length) return;   // moteur pas prêt   // voix présente, ou moteur pas prêt
   noVoiceWarned.add(lang);
   const fr = getLang() === "fr";
   toast(lang === "en"
@@ -124,10 +125,16 @@ function warnNoVoice(lang) {
     : (fr ? "Aucune voix française n'est installée sur cet appareil. Choisis « Installer d'autres voix… » dans le menu des voix."
           : "No French voice is installed on this device. Pick \"Install more voices…\" in the voice menu."), "warn", 10000);
 }
+const nativeVoiceCache = {};
+document.addEventListener("visibilitychange", () => { if (!document.hidden) for (const k in nativeVoiceCache) delete nativeVoiceCache[k]; });   // retour des réglages de voix
 function voiceList(lang) {
   if (nativeTTS) {
     if (typeof nativeTTS.voices !== "function") return [];
-    let vs = []; try { vs = JSON.parse(nativeTTS.voices(lang)); } catch { return []; }
+    // la liste des voix d'Android est lente à obtenir : gardée 60 s (sinon chaque phrase lue retardait la lecture)
+    const c = nativeVoiceCache[lang];
+    let vs = [];
+    if (c && Date.now() - c.at < 60000) vs = c.vs;
+    else { try { vs = JSON.parse(nativeTTS.voices(lang)); } catch { return []; } if (vs.length) nativeVoiceCache[lang] = { vs, at: Date.now() }; }
     // déjà triées par l'appli (les plus naturelles d'abord) ; ★ = qualité « élevée » d'Android, 🌐 = demande Internet
     const country = { "fr-FR": "France", "en-US": "US", "en-GB": "UK" };
     return vs.slice(0, 12).map((v, i) => {
@@ -687,7 +694,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.6";
+const APP_VERSION = "7.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

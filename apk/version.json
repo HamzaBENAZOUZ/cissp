@@ -1,7 +1,7 @@
 {
- "versionCode": 60,
- "versionName": "7.6",
+ "versionCode": 61,
+ "versionName": "7.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture vocale plus fiable dans l'appli : une fin de phrase arrivée en retard ne coupe plus la lecture suivante (mode Speed : dernière proposition sautée).",
- "notes": "More reliable reading in the app: a late end-of-sentence no longer cuts the next reading (Speed mode: last option skipped)."
+ "notes_fr": "Lecture plus rapide au changement de question : la liste des voix n'est plus relue à chaque phrase.",
+ "notes": "Faster reading start on a new question: the voice list is no longer re-read for every sentence."
 }

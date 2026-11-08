@@ -1,7 +1,7 @@
 {
- "versionCode": 56,
- "versionName": "7.2",
+ "versionCode": 57,
+ "versionName": "7.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode Speed (icône ⚡) : question et propositions lues deux fois, 30 s pour répondre, correction lue, question suivante automatique.",
- "notes": "Speed mode (⚡ icon): question and options read twice, 30 s to answer, explanation read, automatic next question."
+ "notes_fr": "Mode Speed : la question n'est plus relue après une réponse (questions à plusieurs réponses et lecture sur la télé).",
+ "notes": "Speed mode: the question is no longer read again after answering (multi-answer questions and TV reading)."
 }

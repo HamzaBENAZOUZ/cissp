@@ -521,7 +521,7 @@ function speedStep() {
       }, 1000);
     };
     // Question puis chaque proposition, 1 s de pause entre chaque, le tout lu deux fois ; le chrono démarre ensuite.
-    if (tv && tv.ok) { tvSpeak("question"); setTimeout(() => { if (alive()) tvSpeak("question"); }, tvReadMs(box) + 1500); setTimeout(startCount, 2 * tvReadMs(box) + 1500); }
+    if (tv && tv.ok) { tvSpeak("question"); setTimeout(() => { if (alive() && z.sp === sp && !sp.touched && !z.checked[i]) tvSpeak("question"); }, tvReadMs(box) + 1500); setTimeout(startCount, 2 * tvReadMs(box) + 1500); }
     else if (canSpeak && box) {
       const nOpt = box.querySelectorAll('[data-tts="opt"]').length, steps = 2 * (1 + nOpt);
       const chunk = k => {   // morceau n° k, pris dans l'affichage actuel (il peut avoir été refait entre-temps)
@@ -533,7 +533,8 @@ function speedStep() {
       };
       const run = k => {
         if (!alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i]) return;
-        if (k >= steps) { startCount(); return; }
+        // une réponse a été touchée pendant la lecture : on ne relit pas la question, le chrono démarre
+        if (k >= steps || sp.touched || z.picks[i].length) { startCount(); return; }
         const c = chunk(k); if (!c) { startCount(); return; }
         const btn = app.querySelector('.question-panel [data-speakmode="question"]') || document.createElement("button");
         speakUnits("speed:" + q.id + ":" + i + ":" + k, speechUnits(c.parts, c.lang), c.lang, btn, () => { clearTimeout(speedNextT); speedNextT = setTimeout(() => run(k + 1), 1000); });
@@ -645,7 +646,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.2";
+const APP_VERSION = "7.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -2091,6 +2092,7 @@ function toggle(L) {
   if (q.multi) p = p.includes(L) ? p.filter(x => x !== L) : [...p, L];
   else p = p[0] === L ? [] : [L];
   z.picks[z.i] = p;
+  if (z.sp && z.sp.i === z.i) z.sp.touched = true;   // mode Speed : plus de relecture de la question
   autoSave();
   if (speedActive(z) && !q.multi && p.length) { check(); return; }   // Speed : une seule réponse = validée tout de suite
   renderQuiz();

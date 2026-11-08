@@ -679,3 +679,21 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
   .imp-tab { grid-template-columns: 1fr; justify-items: center; gap: 4px; padding: 8px 4px; }
   .imp-tab-name { display: none; }
 }
+
+/* ---- Mode TV : bouton 📺 sur le téléphone, écran d'affichage sur Android TV */
+.tv-btn.on { background: var(--accent, #2f8f6b); color: #fff; border-color: transparent; }
+.tv-input { height: 48px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-2); color: var(--text);
+  font-size: 1.6rem; letter-spacing: .3em; text-align: center; width: 100%; box-sizing: border-box; }
+.tv-mode .topbar-right > :not(#mode-badge) { display: none; }
+.tv-mode .container { max-width: 1500px; }
+.tv-mode { font-size: 22px; }
+.tv-wait { text-align: center; padding: 8vh 16px; }
+.tv-wait h1 { font-size: 2.4rem; margin: .4em 0; }
+.tv-code { font-size: 6rem; font-weight: 800; letter-spacing: .12em; margin: .2em 0; color: var(--accent, #2f8f6b); }
+.tv-help { font-size: 1.4rem; color: var(--muted, #888); }
+.tv-quiz .q-text { font-size: 1.7rem; line-height: 1.35; }
+.tv-quiz .opt { font-size: 1.3rem; cursor: default; }
+.tv-quiz .explain p { font-size: 1.25rem; line-height: 1.5; }
+.tv-quiz .scenario p { font-size: 1.2rem; }
+.tv-mode .quiz { max-width: 1400px; }
+.tv-mode .footer { display: none; }

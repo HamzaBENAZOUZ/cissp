@@ -427,6 +427,7 @@ function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
     const q = list.find(x => String(x.id) === b.dataset.speak);
+    if (q && tv && tv.ok && state.view === "quiz") { tvSpeak(b.dataset.speakmode || "answer"); return; }
     if (q) speakAnswer(q, b, b.dataset.speaklang || "en", b.dataset.speakmode || "answer");
   });
 }
@@ -487,7 +488,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "5.9";
+const APP_VERSION = "6.0";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -617,7 +618,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
-  renderExam(); renderMute(); renderVersion(); if (updateInfo) renderUpdate();
+  renderExam(); renderMute(); renderTvBtn(); renderVersion(); if (updateInfo) renderUpdate();
 }
 function rerender() {
   applyStaticTexts();
@@ -626,6 +627,196 @@ function rerender() {
   if (state.view === "results" && state.lastResult) return renderResults();
   if (state.view === "history") return renderHistory();
   if (state.view === "home") return renderHome();
+}
+
+// ------------------------------------------------------------------ mode TV
+/* La même appli sert sur le téléphone et sur Android TV. Sur la télé, elle affiche un code et attend ; sur le téléphone,
+   le bouton 📺 relie l'appli à ce code. Le téléphone envoie alors l'état du quiz (question, propositions, correction)
+   à la télé, qui l'affiche en grand et fait la lecture audio. La liaison passe par Supabase Realtime (canal « broadcast »),
+   sans compte ni connexion sur la télé : seul le téléphone, connecté, envoie le contenu. */
+const IS_TV = (() => { try { return !!(nativeTTS && typeof nativeTTS.isTV === "function" && nativeTTS.isTV()); } catch { return false; } })()
+  || /[?&]tv=1\b/.test(location.search);
+const TV_KEY = "cissp-tv-code";
+let tv = null;   // téléphone : { code, link, ok } ; télé : { code, link }
+function tvChannel(code, onMsg) {
+  if (window.__tvTransport) return window.__tvTransport(code, onMsg);   // tests
+  const sb = state.store && state.store.sb; if (!sb) return null;
+  const ch = sb.channel("cissp-tv-" + code, { config: { broadcast: { self: false } } });
+  ch.on("broadcast", { event: "m" }, ({ payload }) => onMsg(payload || {}));
+  let ready = false; const queue = [];
+  const send = p => ch.send({ type: "broadcast", event: "m", payload: p });
+  ch.subscribe(st => { if (st === "SUBSCRIBED") { ready = true; queue.splice(0).forEach(send); } });
+  return { send: p => (ready ? send(p) : queue.push(p)), close: () => { try { sb.removeChannel(ch); } catch { /* ignore */ } } };
+}
+
+// ---- côté téléphone
+function renderTvBtn() {
+  if (IS_TV || !(window.__tvTransport || (state.store && state.store.sb))) return;
+  let b = document.getElementById("btn-tv");
+  if (!b) {
+    b = document.createElement("button"); b.id = "btn-tv"; b.type = "button"; b.className = "icon-btn tv-btn";
+    const right = document.querySelector(".topbar-right"), m = document.getElementById("btn-mute");
+    right.insertBefore(b, m ? m.nextSibling : right.firstChild);
+    b.addEventListener("click", e => { e.stopPropagation(); toggleTvPop(); });
+  }
+  const fr = getLang() === "fr";
+  b.textContent = "📺";
+  b.classList.toggle("on", !!(tv && tv.ok));
+  b.title = tv && tv.ok ? (fr ? `Connecté à la télé (code ${tv.code})` : `Connected to the TV (code ${tv.code})`)
+    : (fr ? "Afficher les questions sur la télé (Android TV)" : "Show the questions on the TV (Android TV)");
+  b.setAttribute("aria-label", b.title);
+}
+function toggleTvPop(force) {
+  let pop = document.getElementById("tv-pop");
+  const open = force ?? !(pop && !pop.hidden);
+  if (!open) { if (pop) pop.hidden = true; return; }
+  const fr = getLang() === "fr";
+  if (!pop) {
+    pop = document.createElement("div"); pop.id = "tv-pop"; pop.className = "exam-pop panel"; document.body.appendChild(pop);
+    pop.addEventListener("click", e => e.stopPropagation());
+    document.addEventListener("click", () => toggleTvPop(false));
+  }
+  if (tv) {
+    pop.innerHTML = `<p class="exam-lbl">📺 ${tv.ok ? (fr ? `Télé connectée (code ${tv.code})` : `TV connected (code ${tv.code})`) : (fr ? `Connexion à la télé ${tv.code}…` : `Connecting to TV ${tv.code}…`)}</p>
+      <p class="muted small">${fr ? "Réponds sur le téléphone : la question, la correction et la lecture audio passent sur la télé." : "Answer on the phone: the question, the explanation and the audio play on the TV."}</p>
+      <div class="exam-actions"><button class="btn btn-ghost btn-sm" id="tv-off">${fr ? "Déconnecter" : "Disconnect"}</button></div>`;
+    pop.querySelector("#tv-off").onclick = () => { tvDisconnect(); toggleTvPop(false); };
+  } else {
+    pop.innerHTML = `<label class="exam-lbl" for="tv-input">📺 ${fr ? "Code affiché sur la télé" : "Code shown on the TV"}</label>
+      <input id="tv-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="000000" class="tv-input mono">
+      <p class="muted small">${fr ? "Ouvre l'appli CISSP Training sur ta télé Android TV : elle affiche ce code." : "Open the CISSP Training app on your Android TV: it shows this code."}</p>
+      <div class="exam-actions"><button class="btn btn-primary btn-sm" id="tv-ok">${fr ? "Connecter" : "Connect"}</button></div>`;
+    const inp = pop.querySelector("#tv-input");
+    const ok = () => { const c = inp.value.replace(/\D/g, ""); if (c.length !== 6) { inp.focus(); return; } tvConnect(c); toggleTvPop(false); };
+    pop.querySelector("#tv-ok").onclick = ok;
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") ok(); });
+    setTimeout(() => inp.focus(), 50);
+  }
+  pop.hidden = false;
+}
+function tvConnect(code) {
+  tvDisconnect(true);
+  const fr = getLang() === "fr";
+  const link = tvChannel(code, m => {
+    if (!tv || tv.link !== link) return;
+    if (m.t === "here") {   // la télé répond (ou vient de s'ouvrir)
+      const first = !tv.ok; tv.ok = true; renderTvBtn();
+      if (first) toast(fr ? "📺 Télé connectée : réponds sur le téléphone" : "📺 TV connected: answer on the phone", "ok");
+      tvSync();
+    }
+  });
+  if (!link) return toast(fr ? "Mode TV indisponible (Supabase n'est pas configuré)" : "TV mode unavailable (Supabase not configured)", "err");
+  tv = { code, link, ok: false };
+  link.send({ t: "hi" });
+  renderTvBtn();
+  setTimeout(() => {
+    if (tv && tv.link === link && !tv.ok) {
+      toast(fr ? `Aucune télé n'a répondu au code ${code}. Vérifie le code et que l'appli est ouverte sur la télé.` : `No TV answered code ${code}. Check the code and that the app is open on the TV.`, "warn");
+      tvDisconnect(true);
+    }
+  }, 10000);
+}
+function tvDisconnect(silent) {
+  if (!tv) return;
+  try { tv.link.send({ t: "bye" }); } catch { /* ignore */ }
+  const l = tv.link; tv = null; setTimeout(() => l.close(), 500);
+  renderTvBtn();
+  if (!silent) toast(getLang() === "fr" ? "📺 Télé déconnectée" : "📺 TV disconnected", "info");
+}
+/** Envoie à la télé ce qui est affiché sur le téléphone (question en cours, ou attente hors quiz). */
+function tvSync() {
+  if (!tv || !tv.ok) return;
+  const z = state.quiz;
+  if (state.view !== "quiz" || !z) { tv.link.send({ t: "idle", lang: getLang() }); return; }
+  const q = z.questions[z.i], showLang = z.peek ? (getLang() === "fr" ? "en" : "fr") : getLang(), txt = qText(q, showLang);
+  const picks = z.picks[z.i], checked = z.checked[z.i];
+  tv.link.send({
+    t: "q", lang: txt.lang, ui: getLang(), label: z.label(), n: z.i + 1, total: z.questions.length,
+    chapter: chTitle(chById(q.chapter_id)), scenario: txt.scenario || "", question: txt.question, options: txt.options,
+    multi: !!q.multi, picks, checked, correct: checked ? q.correct : [], explanation: checked ? txt.explanation : "",
+    ok: checked && sameSet(picks, q.correct),
+  });
+}
+/** Lecture sur la télé à la place du téléphone (« question », « all » ou « answer »). */
+function tvSpeak(mode) { if (tv && tv.ok) tv.link.send({ t: "speak", mode }); }
+
+// ---- côté télé
+let tvLast = null;
+function tvCode() {
+  let c = ""; try { c = localStorage.getItem(TV_KEY) || ""; } catch { /* ignore */ }
+  if (!/^\d{6}$/.test(c)) {
+    const a = new Uint32Array(1); crypto.getRandomValues(a); c = String(a[0] % 1000000).padStart(6, "0");
+    try { localStorage.setItem(TV_KEY, c); } catch { /* ignore */ }
+  }
+  return c;
+}
+function renderTv() {
+  document.body.classList.add("tv-mode");
+  state.view = "tv";
+  const code = tvCode();
+  if (!tv) {
+    const link = tvChannel(code, m => {
+      if (m.t === "hi") { link.send({ t: "here" }); return; }
+      if (m.t === "bye") { tvLast = null; stopSpeak(); tvRender(); return; }
+      if (m.t === "idle") { tvLast = { t: "idle", ui: m.lang }; stopSpeak(); tvRender(); return; }
+      if (m.t === "q") {
+        const same = tvLast && tvLast.t === "q" && tvLast.n === m.n && tvLast.question === m.question && tvLast.checked === m.checked;
+        if (!same) stopSpeak();
+        tvLast = m; tvRender(); return;
+      }
+      if (m.t === "speak" && tvLast && tvLast.t === "q") tvRead(m.mode);
+    });
+    if (!link) return errorPanel(t("err.title"), "Supabase", "");
+    tv = { code, link };
+    link.send({ t: "here" });   // si un téléphone attend déjà sur ce code
+  }
+  tvRender();
+}
+function tvRender() {
+  const code = tv ? tv.code : tvCode(), m = tvLast;
+  const fr = (m && (m.ui || m.lang) ? (m.ui || m.lang) : getLang()) === "fr";
+  if (!m || m.t !== "q") {
+    app.innerHTML = `<section class="tv-wait">
+      <p class="mono kicker">&gt; cissp-tv --listen</p>
+      <h1>📺 ${m ? (fr ? "Téléphone connecté" : "Phone connected") : (fr ? "Mode télé" : "TV mode")}</h1>
+      <p class="tv-code mono">${code.slice(0, 3)} ${code.slice(3)}</p>
+      <p class="tv-help">${m ? (fr ? "Lance un quiz sur le téléphone : les questions s'afficheront ici." : "Start a quiz on the phone: the questions will show here.")
+        : (fr ? "Sur le téléphone, touche 📺 en haut de l'appli et tape ce code." : "On the phone, tap 📺 at the top of the app and type this code.")}</p>
+    </section>`;
+    return;
+  }
+  const opts = m.options.map((o, idx) => {
+    const L = letter(idx), sel = m.picks.includes(L);
+    let cls = sel ? "selected" : "";
+    if (m.checked) { if (m.correct.includes(L)) cls += " correct"; else if (sel) cls += " wrong"; }
+    return `<li><div class="opt ${cls}"><span class="opt-key mono">${L}</span><span class="opt-txt" data-tts="opt">${esc(o)}</span>
+      <span class="opt-mark mono">${m.checked ? (m.correct.includes(L) ? "✓" : sel ? "✗" : "") : ""}</span></div></li>`;
+  }).join("");
+  app.innerHTML = `<section class="quiz tv-quiz">
+    <div class="quiz-head"><div><p class="mono kicker">${esc(m.label)}</p>
+      <p class="mono q-count">Q ${pad(m.n)}<span class="muted">/${pad(m.total)}</span></p></div></div>
+    <div class="progress"><span style="width:${pct(m.n - 1 + (m.checked ? 1 : 0), m.total)}%"></span></div>
+    <article class="panel question-panel" lang="${m.lang}">
+      <p class="q-chapter mono muted">${esc(m.chapter)}</p>
+      ${m.scenario ? `<div class="scenario"><p data-tts="scenario">${esc(m.scenario)}</p></div>` : ""}
+      <h2 class="q-text" data-tts="q">${esc(m.question)}</h2>
+      ${m.multi ? `<p class="hint mono">${esc(t("quiz.multi", {}, m.lang))}</p>` : ""}
+      <ol class="opts">${opts}</ol>
+      ${m.checked ? `<div class="explain ${m.ok ? "ok" : "ko"}">
+        <p class="mono verdict">${esc(m.ok ? t("quiz.granted", {}, m.ui) : t("quiz.denied", { a: m.correct.join(", ") }, m.ui))}</p>
+        <p data-tts="exp">${esc(m.explanation)}</p></div>` : ""}
+    </article>
+  </section>`;
+  if (m.checked) setTimeout(() => { const e = app.querySelector(".explain"); if (e) e.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
+  else window.scrollTo({ top: 0 });
+}
+function tvRead(mode) {
+  const m = tvLast; if (!m || m.t !== "q" || !canSpeak) return;
+  const box = app.querySelector(".question-panel"); if (!box) return;
+  let btn = document.getElementById("tv-speak-dummy");
+  if (!btn) { btn = document.createElement("button"); btn.id = "tv-speak-dummy"; btn.hidden = true; document.body.appendChild(btn); }
+  if (player) stopSpeak();
+  speakUnits("tv:" + m.n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn);
 }
 
 // ------------------------------------------------------------------ boot
@@ -643,6 +834,7 @@ async function boot() {
   const badge = document.getElementById("mode-badge");
   badge.classList.add(configured ? "badge-ok" : "badge-warn");
   applyStaticTexts();
+  if (IS_TV) return renderTv();   // télé : pas de connexion, on attend le téléphone
 
   document.getElementById("btn-logout").addEventListener("click", async () => {
     stopTimer(); await state.store.signOut(); unregisterSW(); state.session = null; state.chapters = []; renderLogin();
@@ -805,8 +997,8 @@ function route() {
   }
   if (h === "quiz" && state.quiz) return renderQuiz();
   if (h === "results" && state.lastResult) return renderResults();
-  if (h === "history") return renderHistory();
-  renderHome();
+  if (h === "history") { renderHistory(); tvSync(); return; }
+  renderHome(); tvSync();
 }
 const go = h => { if (location.hash === `#/${h}`) route(); else location.hash = `#/${h}`; };
 
@@ -1603,6 +1795,7 @@ function renderQuiz() {
   on("btn-save", () => saveQuiz());
   on("btn-quit", () => go(""));
   app.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { z.i = +b.dataset.goto; z.peek = false; renderQuiz(); });
+  tvSync();
 }
 
 function toggle(L) {
@@ -1620,7 +1813,9 @@ function check() {
   const z = state.quiz; if (!z.picks[z.i].length) return;
   z.checked[z.i] = true; autoSave(); renderQuiz();
   // lecture automatique de la correction (langue affichée, voix et vitesse déjà choisies)
-  if (autoRead()) { const b = app.querySelector('.speak-row [data-speakmode="answer"]'); if (b) b.click(); }
+  if (!autoRead()) return;
+  if (tv && tv.ok) { tvSpeak("answer"); return; }   // télé connectée : la lecture se fait sur la télé
+  const b = app.querySelector('.speak-row [data-speakmode="answer"]'); if (b) b.click();
 }
 function move(d) {
   const z = state.quiz;

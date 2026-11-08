@@ -399,7 +399,13 @@ function quizParts(q, box, lang, mode) {
   const opts = [...box.querySelectorAll('[data-tts="opt"]')];
   const opt = i => ({ el: opts[i], prefix: String.fromCharCode(65 + i) + (fr ? " :" : ":") });
   const question = ["Question", { el: el("scenario") }, { el: el("q") }, ...opts.map((_, i) => opt(i))];
-  const head = fr ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : `Correct answer${q.correct.length > 1 ? "s" : ""}`;
+  // Correction affichée : réponse fausse (ou pas de réponse) -> « Mauvaise réponse, la bonne réponse est… »
+  const ex = box.querySelector(".explain"), wrong = !!(ex && ex.classList.contains("ko")), none = wrong && !box.querySelector(".opt.selected");
+  const many = q.correct.length > 1;
+  const head = wrong
+    ? (fr ? `${none ? "Pas de réponse" : "Mauvaise réponse"}. ${many ? "Les bonnes réponses sont" : "La bonne réponse est"} :`
+      : `${none ? "No answer" : "Wrong answer"}. The correct answer${many ? "s are" : " is"}:`)
+    : (fr ? (many ? "Bonnes réponses" : "Bonne réponse") : `Correct answer${many ? "s" : ""}`);
   const answer = [head, ...q.correct.map(L => opt(L.charCodeAt(0) - 65)), { el: el("exp") }];
   return mode === "question" ? question : mode === "answer" ? answer : [...question, ...answer];
 }
@@ -646,7 +652,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.3";
+const APP_VERSION = "7.4";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

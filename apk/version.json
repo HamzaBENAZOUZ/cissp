@@ -1,7 +1,7 @@
 {
- "versionCode": 47,
- "versionName": "6.3",
+ "versionCode": 48,
+ "versionName": "6.4",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode télé : le choix de la voix revient, en haut à gauche à côté du logo.",
- "notes": "TV mode: voice picker is back, top left next to the logo."
+ "notes_fr": "Choix de la voix sur la télé (en haut à gauche) et alerte quand aucune voix anglaise n'est installée sur l'appareil.",
+ "notes": "Voice picker on the TV (top left) and a warning when no English voice is installed on the device."
 }

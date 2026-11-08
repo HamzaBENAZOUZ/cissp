@@ -110,6 +110,20 @@ function setRate(dir) {
 const VOICE_KEY = l => `cissp-voice-${l}`;
 const voicePref = l => { try { return localStorage.getItem(VOICE_KEY(l)) || ""; } catch { return ""; } };
 /** Voix disponibles pour une langue : [{ name, label }]. */
+/** Appli : aucune voix installée pour cette langue (fréquent sur Android TV, qui n'a souvent que la voix française) :
+ *  Android lirait alors l'anglais avec la voix française. On le signale une fois, avec le moyen d'installer la voix. */
+const noVoiceWarned = new Set();
+function warnNoVoice(lang) {
+  if (noVoiceWarned.has(lang) || typeof nativeTTS.voices !== "function") return;
+  if (voiceList(lang).length || !voiceList(lang === "fr" ? "en" : "fr").length) return;   // voix présente, ou moteur pas prêt
+  noVoiceWarned.add(lang);
+  const fr = getLang() === "fr";
+  toast(lang === "en"
+    ? (fr ? "Aucune voix anglaise n'est installée sur cet appareil : l'anglais est lu avec une voix française. Choisis « Installer d'autres voix… » dans le menu des voix, puis télécharge Anglais (États-Unis)."
+          : "No English voice is installed on this device: English is read with a French voice. Pick \"Install more voices…\" in the voice menu, then download English (United States).")
+    : (fr ? "Aucune voix française n'est installée sur cet appareil. Choisis « Installer d'autres voix… » dans le menu des voix."
+          : "No French voice is installed on this device. Pick \"Install more voices…\" in the voice menu."), "warn", 10000);
+}
 function voiceList(lang) {
   if (nativeTTS) {
     if (typeof nativeTTS.voices !== "function") return [];
@@ -333,6 +347,7 @@ function playFrom(from) {
   };
   renderPlayer();
   const L = lang === "fr" ? "fr-FR" : "en-US";
+  if (nativeTTS) warnNoVoice(lang);
   if (nativeTTS) {
     if (typeof nativeTTS.setRate === "function") nativeTTS.setRate(ttsRate);
     if (typeof nativeTTS.speakParts === "function") {   // appli récente : toutes les phrases d'un coup, repère à chaque phrase
@@ -473,13 +488,13 @@ function setCert(cert) {
   setSection(cert === "ccsp" ? "ccsp-" + kind : kind);
 }
 
-function toast(msg, kind = "info") {
+function toast(msg, kind = "info", ms = 3800) {
   const el = document.createElement("div");
   el.className = `toast toast-${kind}`;
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.classList.add("show"), 10);
-  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, 3800);
+  setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, ms);
 }
 function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
 function errorPanel(title, msg, hint) {
@@ -488,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.3";
+const APP_VERSION = "6.4";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

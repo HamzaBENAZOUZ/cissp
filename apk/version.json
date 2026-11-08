@@ -1,7 +1,7 @@
 {
- "versionCode": 55,
- "versionName": "7.1",
+ "versionCode": 56,
+ "versionName": "7.2",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : barre de progression de la lecture ; le téléphone se reconnecte tout seul à la dernière télé ; confirmation avant de se déconnecter.",
- "notes": "TV: reading progress bar; the phone reconnects to the last TV by itself; confirmation before disconnecting."
+ "notes_fr": "Mode Speed (icône ⚡) : question et propositions lues deux fois, 30 s pour répondre, correction lue, question suivante automatique.",
+ "notes": "Speed mode (⚡ icon): question and options read twice, 30 s to answer, explanation read, automatic next question."
 }

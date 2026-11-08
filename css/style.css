@@ -715,3 +715,11 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tv-progress[hidden] { display: none; }
 .tv-progress-fill { display: block; height: 100%; width: 0; background: var(--acc, var(--accent, #4fd1c5)); transition: width .4s ease; }
 .tv-progress-txt { position: absolute; right: 18px; bottom: 14px; font-size: 14px; color: var(--muted); opacity: .8; font-variant-numeric: tabular-nums; }
+
+/* Mode Speed : icône ⚡ (allumée quand actif) et chrono de la question */
+.speed-btn { font-size: 1rem; line-height: 1; opacity: .55; filter: grayscale(1); }
+.speed-btn.on { opacity: 1; filter: none; box-shadow: 0 0 0 2px var(--acc, #f5b301) inset; }
+.speed-clock { position: fixed; z-index: 30; left: max(12px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  font-size: .8rem; padding: 2px 8px; border-radius: 999px; opacity: .7; color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent);
+  font-variant-numeric: tabular-nums; pointer-events: none; }
+.speed-clock.danger { opacity: .95; color: #fff; background: #d64545; }

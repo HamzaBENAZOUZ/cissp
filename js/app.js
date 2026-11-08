@@ -454,6 +454,132 @@ function renderMute() {
     : (on ? "Sound on: the explanation is read after each answer (click to mute)" : "Muted: no automatic reading (click to unmute)");
   b.setAttribute("aria-label", b.title);
 }
+/* Mode Speed (icône ⚡ en haut) : dans un quiz avec correction, la question est lue toute seule, puis 30 s pour répondre.
+   Sans réponse : la bonne réponse s'affiche et est lue, la question compte comme fausse. Après la correction, question
+   suivante 3 s plus tard. Une question à une seule réponse est validée dès qu'on la touche. */
+const SPEED_KEY = "cissp-speed", SPEED_S = 30, SPEED_NEXT_S = 3;
+const speedOn = () => { try { return localStorage.getItem(SPEED_KEY) === "on"; } catch { return false; } };
+function renderSpeedBtn() {
+  if (IS_TV) return;
+  let b = document.getElementById("btn-speed");
+  if (!b) {
+    b = document.createElement("button"); b.id = "btn-speed"; b.type = "button"; b.className = "icon-btn speed-btn";
+    const right = document.querySelector(".topbar-right"), m = document.getElementById("btn-mute");
+    right.insertBefore(b, m ? m.nextSibling : right.firstChild);
+    b.addEventListener("click", () => {
+      const on = !speedOn();
+      try { localStorage.setItem(SPEED_KEY, on ? "on" : "off"); } catch { /* ignore */ }
+      renderSpeedBtn();
+      const fr = getLang() === "fr";
+      toast(on ? (fr ? `⚡ Mode Speed activé : lecture automatique, ${SPEED_S} s par question` : `⚡ Speed mode on: automatic reading, ${SPEED_S} s per question`)
+        : (fr ? "Mode Speed désactivé" : "Speed mode off"), "info");
+      if (state.view === "quiz" && state.quiz) { speedReset(); renderQuiz(); }
+    });
+  }
+  const on = speedOn(), fr = getLang() === "fr";
+  b.textContent = "⚡";
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+  b.title = fr ? (on ? `Mode Speed activé : question lue, ${SPEED_S} s pour répondre, passage automatique (cliquer pour désactiver)` : "Mode Speed désactivé (cliquer pour activer)")
+    : (on ? `Speed mode on: question read aloud, ${SPEED_S} s to answer, automatic next (click to turn off)` : "Speed mode off (click to turn on)");
+  b.setAttribute("aria-label", b.title);
+}
+let speedClock = null, speedNextT = null;
+function speedReset() {
+  clearInterval(speedClock); speedClock = null; clearTimeout(speedNextT); speedNextT = null;
+  if (state.quiz) state.quiz.sp = null;
+}
+const speedActive = z => !!(z && z.feedback && speedOn() && !IS_TV);
+/** Affichage du chrono Speed (lecture / secondes restantes / question suivante dans…). */
+function speedShow() {
+  const z = state.quiz, el = document.getElementById("speed-clock"); if (!el || !z || !z.sp) return;
+  const sp = z.sp, fr = getLang() === "fr";
+  el.classList.toggle("danger", sp.phase === "count" && sp.left <= 10);
+  el.textContent = sp.phase === "reading" ? "⚡ 🔊" : sp.phase === "count" ? `⏱ ${sp.left}` : sp.phase === "next" ? `⏭ ${sp.left}` : "⚡";
+  el.title = sp.phase === "count" ? (fr ? "Temps restant pour répondre" : "Time left to answer") : sp.phase === "next" ? (fr ? "Question suivante dans…" : "Next question in…") : (fr ? "Lecture de la question" : "Reading the question");
+}
+/** Durée approximative d'une lecture faite sur la télé (le téléphone n'en voit pas la fin). */
+const tvReadMs = box => Math.max(4000, (box ? box.textContent.split(/\s+/).length : 40) / 2.6 / ttsRate * 1000);
+/** Appelé à la fin de renderQuiz : démarre ou reprend le déroulé Speed de la question affichée. */
+function speedStep() {
+  const z = state.quiz; if (!speedActive(z)) return;
+  const i = z.i, q = z.questions[i], alive = () => state.quiz === z && z.i === i && state.view === "quiz";
+  if (z.sp && z.sp.i !== i) speedReset();
+  if (!z.sp) z.sp = { i, phase: z.checked[i] ? "done" : "reading", left: SPEED_S };
+  const sp = z.sp;
+  const box = app.querySelector(".question-panel");
+  if (sp.phase === "reading" && !sp.started) {
+    sp.started = true;
+    const startCount = () => {
+      if (!alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i]) return;
+      sp.phase = "count"; sp.left = SPEED_S; speedShow();
+      clearInterval(speedClock);
+      speedClock = setInterval(() => {
+        if (!alive() || z.sp !== sp || sp.phase !== "count") { clearInterval(speedClock); return; }
+        sp.left--; speedShow();
+        if (sp.left <= 0) { clearInterval(speedClock); speedTimeout(); }
+      }, 1000);
+    };
+    // Question puis chaque proposition, 1 s de pause entre chaque, le tout lu deux fois ; le chrono démarre ensuite.
+    if (tv && tv.ok) { tvSpeak("question"); setTimeout(() => { if (alive()) tvSpeak("question"); }, tvReadMs(box) + 1500); setTimeout(startCount, 2 * tvReadMs(box) + 1500); }
+    else if (canSpeak && box) {
+      const nOpt = box.querySelectorAll('[data-tts="opt"]').length, steps = 2 * (1 + nOpt);
+      const chunk = k => {   // morceau n° k, pris dans l'affichage actuel (il peut avoir été refait entre-temps)
+        const bx = app.querySelector(".question-panel"); if (!bx) return null;
+        const lang = bx.lang || getLang(), fr = lang === "fr", j = k % (1 + nOpt), el = x => bx.querySelector(`[data-tts="${x}"]`);
+        if (j === 0) return { lang, parts: [k ? (fr ? "Je répète." : "Once again.") : "Question", { el: el("scenario") }, { el: el("q") }] };
+        const o = bx.querySelectorAll('[data-tts="opt"]')[j - 1];
+        return { lang, parts: [{ el: o, prefix: String.fromCharCode(64 + j) + (fr ? " :" : ":") }] };
+      };
+      const run = k => {
+        if (!alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i]) return;
+        if (k >= steps) { startCount(); return; }
+        const c = chunk(k); if (!c) { startCount(); return; }
+        const btn = app.querySelector('.question-panel [data-speakmode="question"]') || document.createElement("button");
+        speakUnits("speed:" + q.id + ":" + i + ":" + k, speechUnits(c.parts, c.lang), c.lang, btn, () => { clearTimeout(speedNextT); speedNextT = setTimeout(() => run(k + 1), 1000); });
+      };
+      run(0);
+    } else startCount();
+  }
+  speedShow();
+}
+/** Temps écoulé : bonne réponse affichée et lue, question comptée fausse. */
+function speedTimeout() {
+  const z = state.quiz; if (!z || z.checked[z.i]) return;
+  (z.timeouts ||= {})[z.i] = true;
+  toast(getLang() === "fr" ? "⏱ Temps écoulé : question comptée fausse" : "⏱ Time's up: question counted as wrong", "warn", 2500);
+  z.checked[z.i] = true; autoSave(); renderQuiz();
+  speedAfterCheck();
+}
+/** Après la correction (réponse donnée ou temps écoulé) : lecture de la correction, puis question suivante 3 s après. */
+function speedAfterCheck() {
+  const z = state.quiz; if (!speedActive(z)) return false;
+  const i = z.i, alive = () => state.quiz === z && z.i === i && state.view === "quiz";
+  clearInterval(speedClock);
+  const sp = z.sp = { i, phase: "answer", left: SPEED_NEXT_S, started: true };
+  speedShow();
+  const goNext = () => {
+    if (!alive() || z.sp !== sp || sp.phase !== "answer") return;
+    sp.phase = "next"; sp.left = SPEED_NEXT_S; speedShow();
+    clearInterval(speedClock);
+    speedClock = setInterval(() => {
+      if (!alive() || z.sp !== sp) { clearInterval(speedClock); return; }
+      sp.left--; speedShow();
+      if (sp.left <= 0) {
+        clearInterval(speedClock);
+        if (z.i >= z.questions.length - 1) finishQuiz(); else move(1);
+      }
+    }, 1000);
+  };
+  const box = app.querySelector(".question-panel"), q = z.questions[i];
+  if (tv && tv.ok) { tvSpeak("answer"); setTimeout(goNext, tvReadMs(box && box.querySelector(".explain"))); }
+  else if (canSpeak && box) {
+    const lang = box.lang || getLang();
+    const btn = box.querySelector('.speak-row [data-speakmode="answer"]') || document.createElement("button");
+    speakUnits("speed-a:" + q.id + ":" + i, speechUnits(quizParts(q, box, lang, "answer"), lang), lang, btn, goNext);
+  } else goNext();
+  return true;
+}
 function bindSpeak(list) {
   app.querySelectorAll("[data-speak]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
@@ -519,7 +645,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.1";
+const APP_VERSION = "7.2";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -649,7 +775,7 @@ function applyStaticTexts() {
   if (state.store) badge.textContent = state.store.kind !== "supabase" ? t("top.local") : state.store.offline ? t("off.badge") : "SUPABASE";
   if (state.store && state.store.autonomous) badge.textContent = t("auto.badge");
   badge.classList.toggle("badge-off", !!(state.store && state.store.offline));
-  renderExam(); renderMute(); renderTvBtn(); renderVersion(); if (updateInfo) renderUpdate();
+  renderExam(); renderMute(); renderSpeedBtn(); renderTvBtn(); renderVersion(); if (updateInfo) renderUpdate();
 }
 function rerender() {
   applyStaticTexts();
@@ -1898,6 +2024,7 @@ function renderQuiz() {
           <span class="muted"> · ${chLabel(q.chapter_id)} #${q.number}</span></p>
       </div>
       <div class="quiz-head-right">
+        ${speedActive(z) ? `<span id="speed-clock" class="speed-clock mono" aria-live="off"></span>` : ""}
         <span id="timer" class="timer mono">${z.timed ? fmtTime(Math.max(0, z.timed - z.elapsed)) : fmtTime(z.elapsed)}</span>
         <button class="btn btn-ghost btn-sm" id="btn-save" title="${esc(t("save.title"))}">💾 ${esc(t("save.btn"))}</button>
         <button class="btn btn-ghost btn-sm" id="btn-quit">${esc(t("quiz.quit"))}</button>
@@ -1953,6 +2080,7 @@ function renderQuiz() {
   on("btn-quit", () => go(""));
   app.querySelectorAll("[data-goto]").forEach(b => b.onclick = () => { z.i = +b.dataset.goto; z.peek = false; renderQuiz(); });
   tvSync();
+  speedStep();
 }
 
 function toggle(L) {
@@ -1964,11 +2092,13 @@ function toggle(L) {
   else p = p[0] === L ? [] : [L];
   z.picks[z.i] = p;
   autoSave();
+  if (speedActive(z) && !q.multi && p.length) { check(); return; }   // Speed : une seule réponse = validée tout de suite
   renderQuiz();
 }
 function check() {
   const z = state.quiz; if (!z.picks[z.i].length) return;
   z.checked[z.i] = true; autoSave(); renderQuiz();
+  if (speedAfterCheck()) return;   // mode Speed : correction lue puis question suivante
   // lecture automatique de la correction (langue affichée, voix et vitesse déjà choisies)
   if (!autoRead()) return;
   if (tv && tv.ok) { tvSpeak("answer"); return; }   // télé connectée : la lecture se fait sur la télé
@@ -1976,6 +2106,7 @@ function check() {
 }
 function move(d) {
   const z = state.quiz;
+  speedReset();
   z.i = Math.min(z.questions.length - 1, Math.max(0, z.i + d));
   z.peek = false;
   autoSave();
@@ -1985,6 +2116,7 @@ function move(d) {
 
 async function finishQuiz() {
   const z = state.quiz; if (!z) return;
+  speedReset();
   stopTimer();
   const details = z.questions.map((q, k) => ({ q, picks: z.picks[k], ok: sameSet(z.picks[k], q.correct) }));
   const correct = details.filter(d => d.ok).length;
@@ -1994,7 +2126,7 @@ async function finishQuiz() {
   clearTimeout(saveTimer); savePending = null;
   await dropSaved(z.saveId);  // quiz terminé : la sauvegarde de reprise n'a plus lieu d'être
   // On n'enregistre que les questions répondues (sauf examen : toutes comptent).
-  const toSave = details.filter(d => z.mode === "exam" || d.picks.length);
+  const toSave = details.filter((d, k) => z.mode === "exam" || d.picks.length || (z.timeouts && z.timeouts[k]));
   try {
     await state.store.saveAttempt(
       { mode: z.mode, chapter_id: z.chapter_id, total: details.length, correct, duration_s: duration },

@@ -1,7 +1,7 @@
 {
- "versionCode": 50,
- "versionName": "6.6",
+ "versionCode": 51,
+ "versionName": "6.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Résumé Last Mile en anglais : 8 chapitres très détaillés (l'onglet suit la langue de l'appli, lecture EN ou FR, aussi sur la télé).",
- "notes": "Last Mile Summary in English: 8 very detailed chapters (the tab follows the app language, read aloud in EN or FR, also on the TV)."
+ "notes_fr": "Android Auto : écoute les fiches (Résumé Last Mile, Révision, Livre) et des quiz audio en voiture, avec lecture, pause, suivant/précédent et phrase précédente/suivante.",
+ "notes": "Android Auto: listen to the study sheets (Last Mile Summary, Review, Book) and audio quizzes in the car, with play, pause, next/previous and previous/next sentence."
 }

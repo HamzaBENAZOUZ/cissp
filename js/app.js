@@ -503,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.6";
+const APP_VERSION = "6.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -880,11 +880,65 @@ function tvRead(mode) {
   speakUnits("tv:" + m.n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn);
 }
 
+// ------------------------------------------------------------------ Android Auto
+/* L'appli prépare le contenu à écouter en voiture (fiches et quiz audio) dans la langue de l'appli ;
+   le lecteur Android Auto (AutoService.java) le lit phrase par phrase : lecture / pause, suivant / précédent. */
+const AUTO_PAUSE = "##PAUSE##";
+function exportAuto() {
+  if (!nativeTTS || typeof nativeTTS.saveAuto !== "function" || !state.questions) return;
+  try {
+    const lang = getLang(), fr = lang === "fr";
+    const clean = l => l.startsWith("## ") ? l.slice(3) + "." : l.startsWith("- ") ? l.slice(2) : l;
+    const lines = (r, panes, L = lang) => panes.flatMap(p => [t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
+    const groups = [];
+    groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
+      items: LMSUM.map(r => ({ title: (fr ? "Domaine " : "Domain ") + r.id + " · " + domainName(r.id, "cissp"), subtitle: t("lms.tab", {}, lang),
+        lang, parts: lines(r, REV_PANES) })) });
+    const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
+    groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
+      items: REVISION.map(r => ({ title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),
+        lang, parts: lines(r, REV_PANES) })) });
+    if (state.notes && state.notes.size) {
+      const ids = [...state.notes.keys()].sort((a, b) => a - b);
+      groups.push({ title: t("book.tab", {}, lang), subtitle: ids.length + (fr ? " chapitres" : " chapters"),
+        items: ids.map(id => {
+          const n = state.notes.get(id) || {}, hasFrTxt = !!(n.summary_fr && n.summary_fr.length);
+          const L = fr && hasFrTxt ? "fr" : "en";
+          return { title: (L === "fr" ? "Chapitre " : "Chapter ") + id + " · " + chTitle(id), subtitle: t("book.tab", {}, lang),
+            lang: L, parts: lines({ id }, BOOK_PANES, L) };
+        }) });
+    }
+    // Quiz audio : question et propositions, un temps de réflexion, puis la bonne réponse et l'explication.
+    const quizItem = (q, k) => {
+      const x = qText(q, lang), Lq = x.lang, f = Lq === "fr";
+      const opts = (x.options || []).map((o, i) => String.fromCharCode(65 + i) + (f ? " : " : ": ") + o);
+      const ok = q.correct.map(L => L + (f ? " : " : ": ") + ((x.options || [])[L.charCodeAt(0) - 65] || ""));
+      const head = f ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : (q.correct.length > 1 ? "Correct answers" : "Correct answer");
+      return { title: "Question " + (k + 1), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
+        parts: [x.scenario || "", x.question || "", ...opts, AUTO_PAUSE, head + ".", ...ok, x.explanation || ""] };
+    };
+    const pool = qs => (fr ? [...qs.filter(hasFr), ...qs.filter(q => !hasFr(q))] : qs);
+    const pick = (qs, n) => { const a = [...qs]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
+    const own = s => state.questions.filter(q => secOf(q.chapter_id) === s);
+    const wrong = mistakes();
+    if (wrong.length) groups.push({ title: fr ? "Quiz audio · Mes erreurs" : "Audio quiz · My mistakes",
+      subtitle: Math.min(wrong.length, 60) + " questions", items: pick(pool(wrong), 60).map(quizItem) });
+    const lm = own("lastmile");
+    if (lm.length) groups.push({ title: fr ? "Quiz audio · Last Mile" : "Audio quiz · Last Mile",
+      subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? lm.filter(hasFr).length ? lm.filter(hasFr) : lm : lm, 40).map(quizItem) });
+    const cs = [...own("guide"), ...own("practice")];
+    if (cs.length) groups.push({ title: fr ? "Quiz audio · CISSP" : "Audio quiz · CISSP",
+      subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? cs.filter(hasFr).length ? cs.filter(hasFr) : cs : cs, 40).map(quizItem) });
+    nativeTTS.saveAuto(JSON.stringify({ v: 1, lang, rate: ttsRate, pauseMs: 6000,
+      voice: { fr: voicePref("fr"), en: voicePref("en") }, groups }));
+  } catch (e) { console.error("exportAuto", e); }
+}
+
 // ------------------------------------------------------------------ boot
 async function boot() {
   setTheme(currentTheme());
   document.getElementById("btn-theme").addEventListener("click", () => setTheme(currentTheme() === "light" ? "dark" : "light"));
-  document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); rerender(); }));
+  document.querySelectorAll("[data-lang]").forEach(b => b.addEventListener("click", () => { setLang(b.dataset.lang); rerender(); exportAuto(); }));
   applyStaticTexts();
 
   const configured = !!(CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY);
@@ -942,6 +996,7 @@ async function start() {
     }
     await refreshProgress();
     applyStaticTexts();
+    exportAuto();
     // Application Android : tout est téléchargé automatiquement pour pouvoir réviser hors ligne.
     if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
       state.store.downloadOffline({ chapters, questions })
@@ -1910,6 +1965,7 @@ async function finishQuiz() {
       toSave.map(d => ({ question_id: d.q.id, selected: d.picks, is_correct: d.ok })));
     state.lastResult.saved = true;
     await refreshProgress();
+    exportAuto();
   } catch (e) { console.error(e); toast(t("quiz.notSaved") + e.message, "err"); }
   go("results");
 }

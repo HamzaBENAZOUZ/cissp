@@ -709,3 +709,9 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tv-sheet .tv-sheet-title { font-size: 2rem; margin: .2em 0 .6em; }
 .tv-sheet .rev-pane { padding: 28px 36px; font-size: 1.25rem; line-height: 1.55; }
 .tv-sheet .rev-pane h4 { font-size: 1.45rem; margin: 1.1em 0 .4em; }
+
+/* Télé : barre de progression de la lecture, fine, en bas de l'écran */
+.tv-progress { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: 8px; background: color-mix(in srgb, var(--muted) 25%, transparent); }
+.tv-progress[hidden] { display: none; }
+.tv-progress-fill { display: block; height: 100%; width: 0; background: var(--acc, var(--accent, #4fd1c5)); transition: width .4s ease; }
+.tv-progress-txt { position: absolute; right: 18px; bottom: 14px; font-size: 14px; color: var(--muted); opacity: .8; font-variant-numeric: tabular-nums; }

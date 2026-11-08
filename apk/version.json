@@ -1,7 +1,7 @@
 {
- "versionCode": 54,
- "versionName": "7.0",
+ "versionCode": 55,
+ "versionName": "7.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : reprise automatique là où tu t'es arrêté, et coche sur les fiches écoutées jusqu'au bout.",
- "notes": "Android Auto: resumes where you left off, with a check mark on sheets listened to the end."
+ "notes_fr": "Télé : barre de progression de la lecture ; le téléphone se reconnecte tout seul à la dernière télé ; confirmation avant de se déconnecter.",
+ "notes": "TV: reading progress bar; the phone reconnects to the last TV by itself; confirmation before disconnecting."
 }

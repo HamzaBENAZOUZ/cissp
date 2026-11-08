@@ -160,7 +160,23 @@ function gotoUnit(i) {
   haltEngine(); playFrom(i);
 }
 /* Barre de lecture fixée en haut de l'écran (visible pendant une lecture, utile en mode paysage). */
+/** Télé : fine barre de progression de la lecture en bas de l'écran. */
+function renderTvProgress() {
+  if (!IS_TV) return;
+  let el = document.getElementById("tv-progress");
+  if (!player) { if (el) el.hidden = true; return; }
+  if (!el) {
+    el = document.createElement("div"); el.id = "tv-progress"; el.className = "tv-progress";
+    el.innerHTML = `<span class="tv-progress-fill"></span><span class="tv-progress-txt mono"></span>`;
+    document.body.appendChild(el);
+  }
+  const n = player.units.length, i = Math.min(player.idx + 1, n), p = n ? Math.round(i * 100 / n) : 0;
+  el.hidden = false;
+  el.querySelector(".tv-progress-fill").style.width = p + "%";
+  el.querySelector(".tv-progress-txt").textContent = `${i}/${n} · ${p} %`;
+}
 function renderPlayer() {
+  renderTvProgress();
   let bar = document.getElementById("tts-bar");
   if (!player) { if (bar) bar.hidden = true; return; }
   if (!bar) {
@@ -503,7 +519,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.0";
+const APP_VERSION = "7.1";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -652,6 +668,9 @@ function rerender() {
 const IS_TV = (() => { try { return !!(nativeTTS && typeof nativeTTS.isTV === "function" && nativeTTS.isTV()); } catch { return false; } })()
   || /[?&]tv=1\b/.test(location.search);
 const TV_KEY = "cissp-tv-code";
+const TV_LAST = "cissp-tv-last";   // téléphone : dernière télé connectée, reconnectée automatiquement
+const tvSaved = () => { try { const c = localStorage.getItem(TV_LAST) || ""; return /^\d{6}$/.test(c) ? c : ""; } catch { return ""; } };
+const tvSave = c => { try { if (c) localStorage.setItem(TV_LAST, c); else localStorage.removeItem(TV_LAST); } catch { /* ignore */ } };
 let tv = null;   // téléphone : { code, link, ok } ; télé : { code, link }
 function tvChannel(code, onMsg) {
   if (window.__tvTransport) return window.__tvTransport(code, onMsg);   // tests
@@ -692,10 +711,16 @@ function toggleTvPop(force) {
     document.addEventListener("click", () => toggleTvPop(false));
   }
   if (tv) {
-    pop.innerHTML = `<p class="exam-lbl">📺 ${tv.ok ? (fr ? `Télé connectée (code ${tv.code})` : `TV connected (code ${tv.code})`) : (fr ? `Connexion à la télé ${tv.code}…` : `Connecting to TV ${tv.code}…`)}</p>
+    pop.innerHTML = `<p class="exam-lbl">📺 ${tv.ok ? (fr ? `Télé connectée (code ${tv.code})` : `TV connected (code ${tv.code})`) : (tv.auto ? (fr ? `En attente de la télé ${tv.code} : ouvre l'appli sur la télé, la connexion se fera toute seule.` : `Waiting for TV ${tv.code}: open the app on the TV and it will connect by itself.`)
+        : (fr ? `Connexion à la télé ${tv.code}…` : `Connecting to TV ${tv.code}…`))}</p>
       <p class="muted small">${fr ? "Réponds sur le téléphone : la question, la correction et la lecture audio passent sur la télé." : "Answer on the phone: the question, the explanation and the audio play on the TV."}</p>
       <div class="exam-actions"><button class="btn btn-ghost btn-sm" id="tv-off">${fr ? "Déconnecter" : "Disconnect"}</button></div>`;
-    pop.querySelector("#tv-off").onclick = () => { tvDisconnect(); toggleTvPop(false); };
+    pop.querySelector("#tv-off").onclick = () => {
+      const c = tv.code.slice(0, 3) + " " + tv.code.slice(3);
+      if (!confirm(fr ? `Se déconnecter de la télé ${c} ?\n\nElle ne sera plus reconnectée automatiquement : il faudra retaper le code.`
+        : `Disconnect from TV ${c}?\n\nIt will no longer reconnect automatically: you will need to type the code again.`)) return;
+      tvSave(""); tvDisconnect(); toggleTvPop(false);
+    };
   } else {
     pop.innerHTML = `<label class="exam-lbl" for="tv-input">📺 ${fr ? "Code affiché sur la télé" : "Code shown on the TV"}</label>
       <input id="tv-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="000000" class="tv-input mono">
@@ -709,28 +734,37 @@ function toggleTvPop(force) {
   }
   pop.hidden = false;
 }
-function tvConnect(code) {
+/** auto = reconnexion à la dernière télé : pas de message d'erreur, on attend que la télé s'ouvre (elle s'annonce). */
+function tvConnect(code, auto = false) {
   tvDisconnect(true);
   const fr = getLang() === "fr";
   const link = tvChannel(code, m => {
     if (!tv || tv.link !== link) return;
     if (m.t === "here") {   // la télé répond (ou vient de s'ouvrir)
-      const first = !tv.ok; tv.ok = true; renderTvBtn();
+      const first = !tv.ok; tv.ok = true; tvSave(code); renderTvBtn();
       if (first) toast(fr ? "📺 Télé connectée : réponds sur le téléphone" : "📺 TV connected: answer on the phone", "ok");
       tvSync();
     }
   });
   if (!link) return toast(fr ? "Mode TV indisponible (Supabase n'est pas configuré)" : "TV mode unavailable (Supabase not configured)", "err");
-  tv = { code, link, ok: false };
+  tv = { code, link, ok: false, auto };
   link.send({ t: "hi" });
   renderTvBtn();
   setTimeout(() => {
-    if (tv && tv.link === link && !tv.ok) {
+    if (tv && tv.link === link && !tv.ok && !tv.auto) {
       toast(fr ? `Aucune télé n'a répondu au code ${code}. Vérifie le code et que l'appli est ouverte sur la télé.` : `No TV answered code ${code}. Check the code and that the app is open on the TV.`, "warn");
       tvDisconnect(true);
     }
   }, 10000);
 }
+/** Au démarrage du téléphone (et au retour dans l'appli) : on retrouve la dernière télé sans redemander le code. */
+function tvAutoConnect() {
+  if (IS_TV) return;
+  const c = tvSaved(); if (!c || !(window.__tvTransport || (state.store && state.store.sb))) return;
+  if (tv && tv.code === c) { if (!tv.ok) tv.link.send({ t: "hi" }); return; }
+  if (!tv) tvConnect(c, true);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state.store) tvAutoConnect(); });
 function tvDisconnect(silent) {
   if (!tv) return;
   try { tv.link.send({ t: "bye" }); } catch { /* ignore */ }
@@ -998,6 +1032,7 @@ async function start() {
     await refreshProgress();
     applyStaticTexts();
     exportAuto();
+    tvAutoConnect();
     // Application Android : tout est téléchargé automatiquement pour pouvoir réviser hors ligne.
     if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
       state.store.downloadOffline({ chapters, questions })

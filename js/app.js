@@ -698,7 +698,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.8";
+const APP_VERSION = "7.9";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -920,6 +920,7 @@ function tvConnect(code, auto = false) {
   const link = tvChannel(code, m => {
     if (!tv || tv.link !== link) return;
     if (m.t === "done") { if (tvDoneCb) tvDoneCb(m); return; }
+    if (m.t === "pick" || m.t === "check" || m.t === "listening") { tvRemoteAnswer(m); return; }
     if (m.t === "here") {   // la télé répond (ou vient de s'ouvrir)
       const first = !tv.ok; tv.ok = true; tvSave(code); renderTvBtn();
       if (first) toast(fr ? "📺 Télé connectée : réponds sur le téléphone" : "📺 TV connected: answer on the phone", "ok");
@@ -979,6 +980,20 @@ function tvSync() {
     multi: !!q.multi, picks, checked, correct: checked ? q.correct : [], explanation: checked ? txt.explanation : "",
     ok: checked && sameSet(picks, q.correct),
   });
+}
+/** Réponse donnée sur la télé (télécommande ou voix) : appliquée au quiz du téléphone comme un toucher. */
+function tvRemoteAnswer(m) {
+  const z = state.quiz; if (state.view !== "quiz" || !z || z.i + 1 !== m.n || z.checked[z.i]) return;
+  const q = z.questions[z.i];
+  if (m.t === "listening") {   // on parle à la télé : la lecture Speed s'arrête, le chrono continue
+    if (z.sp && z.sp.i === z.i && z.sp.phase === "reading") { z.sp.touched = true; if (z.sp.startCount) z.sp.startCount(); }
+    return;
+  }
+  if (m.t === "check") { if (z.picks[z.i].length && z.feedback) check(); return; }
+  if (!/^[A-F]$/.test(m.L || "")) return;
+  if (!q.multi && z.picks[z.i][0] === m.L) { if (z.feedback && !speedActive(z)) check(); return; }   // déjà choisie : on valide
+  toggle(m.L);
+  if (!q.multi && z.feedback && !speedActive(z) && !z.checked[z.i]) check();   // (en Speed, toggle valide déjà)
 }
 /** Lecture sur la télé à la place du téléphone (« question », « all » ou « answer »). */
 function tvSpeak(mode) { if (tv && tv.ok) tv.link.send({ t: "speak", mode }); }
@@ -1061,7 +1076,7 @@ function tvRender() {
     const L = letter(idx), sel = m.picks.includes(L);
     let cls = sel ? "selected" : "";
     if (m.checked) { if (m.correct.includes(L)) cls += " correct"; else if (sel) cls += " wrong"; }
-    return `<li><div class="opt ${cls}"><span class="opt-key mono">${L}</span><span class="opt-txt" data-tts="opt">${esc(o)}</span>
+    return `<li><div class="opt ${cls}" ${m.checked ? "" : `tabindex="0" data-letter="${L}"`}><span class="opt-key mono">${L}</span><span class="opt-txt" data-tts="opt">${esc(o)}</span>
       <span class="opt-mark mono">${m.checked ? (m.correct.includes(L) ? "✓" : sel ? "✗" : "") : ""}</span></div></li>`;
   }).join("");
   app.innerHTML = `<section class="quiz tv-quiz">
@@ -1074,14 +1089,90 @@ function tvRender() {
       <h2 class="q-text" data-tts="q">${esc(m.question)}</h2>
       ${m.multi ? `<p class="hint mono">${esc(t("quiz.multi", {}, m.lang))}</p>` : ""}
       <ol class="opts">${opts}</ol>
+      ${m.checked ? "" : `<p class="tv-answer-help muted">${(m.ui || m.lang) === "fr"
+        ? `🎤 Bouton micro de la télécommande : dis « A », « B »… ${m.multi ? "puis « valider »" : ""} · ou flèches + OK`
+        : `🎤 Remote mic button: say "A", "B"… ${m.multi ? "then \"check\"" : ""} · or arrows + OK`}
+        ${m.multi ? `<button class="btn btn-primary btn-sm" id="tv-check" tabindex="0">${(m.ui || m.lang) === "fr" ? "Valider" : "Check"}</button>` : ""}</p>`}
       ${m.checked ? `<div class="explain ${m.ok ? "ok" : "ko"}">
         <p class="mono verdict">${esc(m.ok ? t("quiz.granted", {}, m.ui) : t("quiz.denied", { a: m.correct.join(", ") }, m.ui))}</p>
         <p data-tts="exp">${esc(m.explanation)}</p></div>` : ""}
     </article>
   </section>`;
   if (m.checked) setTimeout(() => { const e = app.querySelector(".explain"); if (e) e.scrollIntoView({ behavior: "smooth", block: "center" }); }, 50);
-  else window.scrollTo({ top: 0 });
+  else {
+    window.scrollTo({ top: 0 });
+    // télécommande : le focus reste sur la proposition choisie (ou la première), sans faire défiler l'écran
+    if (tvFocusN !== m.n) { tvFocusN = m.n; tvFocusL = ""; }
+    const f = (tvFocusL && app.querySelector(`.tv-quiz .opt[data-letter="${tvFocusL}"]`)) || app.querySelector(".tv-quiz .opt[data-letter]");
+    if (f) f.focus({ preventScroll: true });
+    const c = document.getElementById("tv-check"); if (c) c.onclick = () => tvAnswer({ t: "check" });
+  }
 }
+/* ---- Télé : répondre depuis la télé (télécommande ou voix), la réponse part au téléphone qui la valide. */
+let tvFocusL = "", tvFocusN = 0;
+function tvAnswer(msg) {
+  const m = tvLast; if (!tv || !m || m.t !== "q" || m.checked) return;
+  tv.link.send({ ...msg, n: m.n });
+}
+if (IS_TV) document.addEventListener("keydown", e => {
+  const m = tvLast; if (!m || m.t !== "q" || m.checked) return;
+  const opts = [...app.querySelectorAll(".tv-quiz .opt[data-letter]")]; if (!opts.length) return;
+  const cur = opts.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    const chk = document.getElementById("tv-check");
+    const list = chk ? [...opts, chk] : opts, at = list.indexOf(document.activeElement);
+    const nx = list[Math.max(0, Math.min(list.length - 1, at < 0 ? 0 : at + (e.key === "ArrowDown" ? 1 : -1)))];
+    nx.focus({ preventScroll: false }); if (nx.dataset.letter) tvFocusL = nx.dataset.letter;
+    e.preventDefault(); return;
+  }
+  if ((e.key === "Enter" || e.key === " ") && cur >= 0) { e.preventDefault(); tvFocusL = opts[cur].dataset.letter; tvAnswer({ t: "pick", L: tvFocusL }); return; }
+  if (/^[1-6]$/.test(e.key) && opts[+e.key - 1]) { e.preventDefault(); tvAnswer({ t: "pick", L: opts[+e.key - 1].dataset.letter }); }
+});
+/** Lettres et « valider » reconnus dans ce qui a été dit (« réponse C », « B », « la deuxième », « A et C »…). */
+function tvParseVoice(list, nOpt) {
+  const W = { a: 0, ah: 0, b: 1, be: 1, bee: 1, c: 2, ce: 2, see: 2, sea: 2, d: 3, de: 3, dee: 3, e: 4, f: 5,
+    un: 0, une: 0, one: 0, premier: 0, premiere: 0, first: 0, deux: 1, two: 1, deuxieme: 1, second: 1,
+    trois: 2, three: 2, troisieme: 2, third: 2, quatre: 3, four: 3, quatrieme: 3, fourth: 3, 1: 0, 2: 1, 3: 2, 4: 3 };
+  for (const said of list || []) {
+    const words = said.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const check = words.some(w => /^(valider|valide|verifier|verifie|confirmer|check|confirm|submit|ok)$/.test(w));
+    const letters = [];
+    words.forEach((w, i) => {
+      if (!(w in W) || W[w] >= nOpt) return;
+      if (w === "de" && i < words.length - 1) return;   // « de » au milieu d'une phrase n'est pas la lettre D
+      if (w === "un" || w === "une") { if (i < words.length - 1) return; }
+      const L = letter(W[w]); if (!letters.includes(L)) letters.push(L);
+    });
+    if (letters.length || check) return { letters, check, said };
+  }
+  return null;
+}
+let tvVoiceTip = null;
+function tvVoiceInfo(txt, ms = 0) {
+  if (!tvVoiceTip) { tvVoiceTip = document.createElement("div"); tvVoiceTip.className = "tv-voice-tip"; document.body.appendChild(tvVoiceTip); }
+  tvVoiceTip.textContent = txt; tvVoiceTip.hidden = !txt;
+  clearTimeout(tvVoiceTip._t); if (ms) tvVoiceTip._t = setTimeout(() => { tvVoiceTip.hidden = true; }, ms);
+}
+window.__tvVoiceKey = () => {
+  const m = tvLast, fr = ((m && (m.ui || m.lang)) || getLang()) === "fr";
+  if (!m || m.t !== "q" || m.checked) { tvVoiceInfo(fr ? "🎤 Pas de question en attente de réponse" : "🎤 No question waiting for an answer", 2500); return; }
+  if (!nativeTTS || typeof nativeTTS.listen !== "function") return;
+  if (tv) tv.link.send({ t: "listening", n: m.n });   // le téléphone met le chrono Speed en pause d'écoute
+  if (player) stopSpeak();
+  nativeTTS.listen(m.lang || m.ui || getLang());
+};
+window.__tvVoice = (list, stateMsg) => {
+  const m = tvLast, fr = ((m && (m.ui || m.lang)) || getLang()) === "fr";
+  if (stateMsg === "listening") { tvVoiceInfo(fr ? "🎤 Je t'écoute… dis « A », « B », « C » ou « D »" : "🎤 Listening… say \"A\", \"B\", \"C\" or \"D\""); return; }
+  if (stateMsg === "perm") { tvVoiceInfo(fr ? "🎤 Autorise le micro, puis appuie à nouveau sur le bouton" : "🎤 Allow the microphone, then press the button again", 5000); return; }
+  if (stateMsg) { tvVoiceInfo(fr ? "🎤 Je n'ai pas compris, réessaie" : "🎤 I didn't catch that, try again", 3000); return; }
+  if (!m || m.t !== "q" || m.checked) { tvVoiceInfo("", 0); return; }
+  const r = tvParseVoice(list, m.options.length);
+  if (!r) { tvVoiceInfo((fr ? "🎤 Pas compris : « " : "🎤 Didn't get: \"") + ((list && list[0]) || "") + (fr ? " »" : "\""), 3500); return; }
+  tvVoiceInfo("🎤 " + (r.letters.join(", ") || "") + (r.check ? (fr ? " · valider" : " · check") : ""), 2500);
+  if (m.multi) { r.letters.forEach(L => { if (!m.picks.includes(L)) tvAnswer({ t: "pick", L }); }); if (r.check) setTimeout(() => tvAnswer({ t: "check" }), 400); }
+  else if (r.letters.length) tvAnswer({ t: "pick", L: r.letters[r.letters.length - 1] });
+};
 function tvRead(mode) {
   const m = tvLast; if (!m || !canSpeak) return;
   let btn = document.getElementById("tv-speak-dummy");

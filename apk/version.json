@@ -1,7 +1,7 @@
 {
- "versionCode": 62,
- "versionName": "7.8",
+ "versionCode": 63,
+ "versionName": "7.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode Speed : si la voix ne démarre pas (souvent à la première question), la lecture est relancée automatiquement.",
- "notes": "Speed mode: if the voice does not start (often on the first question), reading is restarted automatically."
+ "notes_fr": "Télé : réponds depuis la télé, à la voix (bouton micro de la télécommande : « A », « réponse C »…) ou avec les flèches et OK ; la réponse part au téléphone.",
+ "notes": "TV: answer from the TV, by voice (remote mic button: \"A\", \"answer C\"…) or with the arrows and OK; the answer is sent to the phone."
 }

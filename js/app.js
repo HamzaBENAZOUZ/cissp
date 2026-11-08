@@ -465,7 +465,7 @@ function setSection(sec) {
   if (!hasSection(sec)) sec = certOf(sec) === "ccsp" ? (hasSection("ccsp-guide") ? "ccsp-guide" : "ccsp-practice") : "guide";
   state.section = sec;
   try { localStorage.setItem("cissp-section", sec); } catch { /* ignore */ }
-  renderHome();
+  renderHome(); tvSync();
 }
 /** Passe d'une certification à l'autre en gardant le même type de banque (Study Guide / Practice Tests). */
 function setCert(cert) {
@@ -488,7 +488,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.1";
+const APP_VERSION = "6.2";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -724,9 +724,23 @@ function tvDisconnect(silent) {
   if (!silent) toast(getLang() === "fr" ? "📺 Télé déconnectée" : "📺 TV disconnected", "info");
 }
 /** Envoie à la télé ce qui est affiché sur le téléphone (question en cours, ou attente hors quiz). */
+let tvRev = null;   // fiche ouverte sur le téléphone : { sec, r, pane, lang }
+/** Fiche (Révision, Résumé Last Mile, Livre) ouverte ou changée sur le téléphone : on l'affiche aussi sur la télé. */
+function tvSheet(sec, r, pane, lang) { tvRev = r ? { sec, r, pane, lang } : null; tvSync(); }
 function tvSync() {
   if (!tv || !tv.ok) return;
   const z = state.quiz;
+  if (state.view === "home" && tvRev && tvRev.sec === state.section) {
+    const { sec, r, pane, lang } = tvRev, c = chById(r.id);
+    tv.link.send({
+      t: "sheet", ui: getLang(), lang, key: sec + ":" + r.id + ":" + pane + ":" + lang,
+      kicker: sec === "lmsum" ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
+      title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, "fr")}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
+      pane: t("rev.pane." + pane, {}, r.lms ? "fr" : getLang()), head: revSpeech(r, pane, lang),
+      kind: ["sum", "bsum", "bess"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
+    });
+    return;
+  }
   if (state.view !== "quiz" || !z) { tv.link.send({ t: "idle", lang: getLang() }); return; }
   const q = z.questions[z.i], showLang = z.peek ? (getLang() === "fr" ? "en" : "fr") : getLang(), txt = qText(q, showLang);
   const picks = z.picks[z.i], checked = z.checked[z.i];
@@ -764,7 +778,11 @@ function renderTv() {
         if (!same) stopSpeak();
         tvLast = m; tvRender(); return;
       }
-      if (m.t === "speak" && tvLast && tvLast.t === "q") tvRead(m.mode);
+      if (m.t === "sheet") {
+        if (!(tvLast && tvLast.t === "sheet" && tvLast.key === m.key)) stopSpeak();
+        tvLast = m; tvRender(); return;
+      }
+      if (m.t === "speak" && tvLast && (tvLast.t === "q" || tvLast.t === "sheet")) tvRead(m.mode);
     });
     if (!link) return errorPanel(t("err.title"), "Supabase", "");
     tv = { code, link };
@@ -775,6 +793,25 @@ function renderTv() {
 function tvRender() {
   const code = tv ? tv.code : tvCode(), m = tvLast;
   const fr = (m && (m.ui || m.lang) ? (m.ui || m.lang) : getLang()) === "fr";
+  if (m && m.t === "sheet") {
+    let body = "";
+    if (m.kind === "list") body = `<ul class="rev-list">${m.lines.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+    else {
+      let list = [];
+      const flush = () => { if (list.length) { body += `<ul class="rev-list">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`; list = []; } };
+      for (const l of m.lines) {
+        if (l.startsWith("- ")) { list.push(l.slice(2)); continue; }
+        flush(); body += l.startsWith("## ") ? `<h4>${esc(l.slice(3))}</h4>` : `<p>${esc(l)}</p>`;
+      }
+      flush();
+    }
+    app.innerHTML = `<section class="quiz tv-quiz tv-sheet">
+      <p class="mono kicker">${esc(m.kicker)} · ${esc(m.pane)}</p>
+      <h1 class="tv-sheet-title">${esc(m.title)}</h1>
+      <article class="panel rev-pane" lang="${m.lang}">${body}</article></section>`;
+    window.scrollTo({ top: 0 });
+    return;
+  }
   if (!m || m.t !== "q") {
     app.innerHTML = `<section class="tv-wait">
       <p class="mono kicker">&gt; cissp-tv --listen</p>
@@ -811,11 +848,17 @@ function tvRender() {
   else window.scrollTo({ top: 0 });
 }
 function tvRead(mode) {
-  const m = tvLast; if (!m || m.t !== "q" || !canSpeak) return;
-  const box = app.querySelector(".question-panel"); if (!box) return;
+  const m = tvLast; if (!m || !canSpeak) return;
   let btn = document.getElementById("tv-speak-dummy");
   if (!btn) { btn = document.createElement("button"); btn.id = "tv-speak-dummy"; btn.hidden = true; document.body.appendChild(btn); }
   if (player) stopSpeak();
+  if (m.t === "sheet") {
+    const pane = app.querySelector(".tv-sheet .rev-pane"); if (!pane) return;
+    speakUnits("tv:" + m.key, speechUnits([m.head, ...[...pane.querySelectorAll("h4, p, li")].map(el => ({ el }))], m.lang), m.lang, btn);
+    return;
+  }
+  if (m.t !== "q") return;
+  const box = app.querySelector(".question-panel"); if (!box) return;
   speakUnits("tv:" + m.n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn);
 }
 
@@ -1394,15 +1437,20 @@ function renderRevision(sec = "revision") {
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => { stopSpeak(); setSection(b.dataset.section); });
   app.querySelectorAll(".rev-card").forEach(d => {
     const id = +d.dataset.rev, r = ITEMS.find(x => x.id === id);
-    d.addEventListener("toggle", () => { if (d.open) { if (!revOpen.has(key(id))) revOpen.set(key(id), PANES[0]); } else revOpen.delete(key(id)); });
+    const shownLang = () => (isLms ? "fr" : getLang());
+    d.addEventListener("toggle", () => {
+      if (d.open) { if (!revOpen.has(key(id))) revOpen.set(key(id), PANES[0]); tvSheet(sec, r, paneOf(id), shownLang()); }
+      else { revOpen.delete(key(id)); if (tvRev && tvRev.sec === sec && tvRev.r.id === id) tvSheet(sec, null); }
+    });
     d.querySelectorAll("[data-revpane]").forEach(b => b.onclick = () => {
-      const pane = b.dataset.revpane; revOpen.set(key(id), pane); stopSpeak();
+      const pane = b.dataset.revpane; revOpen.set(key(id), pane); stopSpeak(); tvSheet(sec, r, pane, shownLang());
       d.querySelectorAll("[data-revpane]").forEach(x => x.setAttribute("aria-pressed", x === b));
       d.querySelector(".rev-pane").innerHTML = revPaneHtml(r, pane, getLang());
     });
     d.querySelectorAll("[data-revspeak]").forEach(b => b.onclick = e => {
       e.preventDefault();
       const l = b.dataset.revspeak, pane = paneOf(id), k = `${sec}:${id}:${pane}:${l}`;
+      if (tv && tv.ok) { tvSheet(sec, r, pane, l); tvSpeak("sheet"); return; }   // télé connectée : lecture sur la télé
       if (speakingId === k) { stopSpeak(); return; }
       stopSpeak();
       // Lecture dans l'autre langue (Listen alors que le site est en français) : on affiche le texte lu le temps

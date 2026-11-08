@@ -705,3 +705,6 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tv-mode .tts-bar:hover, .tv-mode .tts-bar:focus-within { opacity: 1; }
 .tv-mode .tts-bar .tts-voice { display: none; }
 .tv-mode .tts-bar .tts-btn { transform: scale(.85); }
+.tv-sheet .tv-sheet-title { font-size: 2rem; margin: .2em 0 .6em; }
+.tv-sheet .rev-pane { padding: 28px 36px; font-size: 1.25rem; line-height: 1.55; }
+.tv-sheet .rev-pane h4 { font-size: 1.45rem; margin: 1.1em 0 .4em; }

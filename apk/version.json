@@ -1,7 +1,7 @@
 {
- "versionCode": 53,
- "versionName": "6.9",
+ "versionCode": 54,
+ "versionName": "7.0",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : barre de progression pour aller à une phrase, boutons section précédente/suivante, et chaque fiche s'ouvre pour démarrer à la section voulue.",
- "notes": "Android Auto: progress bar to jump to a sentence, previous/next section buttons, and each sheet opens to start at the chosen section."
+ "notes_fr": "Android Auto : reprise automatique là où tu t'es arrêté, et coche sur les fiches écoutées jusqu'au bout.",
+ "notes": "Android Auto: resumes where you left off, with a check mark on sheets listened to the end."
 }

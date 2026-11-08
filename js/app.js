@@ -503,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.9";
+const APP_VERSION = "7.0";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -893,11 +893,11 @@ function exportAuto() {
     const lines = (r, panes, L = lang) => panes.flatMap(p => ["§ " + t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
     const groups = [];
     groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
-      items: LMSUM.map(r => ({ title: (fr ? "Domaine " : "Domain ") + r.id + " · " + domainName(r.id, "cissp"), subtitle: t("lms.tab", {}, lang),
+      items: LMSUM.map(r => ({ key: "lms-" + r.id + "-" + lang, title: (fr ? "Domaine " : "Domain ") + r.id + " · " + domainName(r.id, "cissp"), subtitle: t("lms.tab", {}, lang),
         lang, parts: lines(r, REV_PANES) })) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
     groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
-      items: REVISION.map(r => ({ title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),
+      items: REVISION.map(r => ({ key: "rev-" + r.id + "-" + lang, title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),
         lang, parts: lines(r, REV_PANES) })) });
     if (state.notes && state.notes.size) {
       const ids = [...state.notes.keys()].sort((a, b) => a - b);
@@ -905,7 +905,7 @@ function exportAuto() {
         items: ids.map(id => {
           const n = state.notes.get(id) || {}, hasFrTxt = !!(n.summary_fr && n.summary_fr.length);
           const L = fr && hasFrTxt ? "fr" : "en";
-          return { title: (L === "fr" ? "Chapitre " : "Chapter ") + id + " · " + chTitle(id), subtitle: t("book.tab", {}, lang),
+          return { key: "book-" + id + "-" + L, title: (L === "fr" ? "Chapitre " : "Chapter ") + id + " · " + chTitle(id), subtitle: t("book.tab", {}, lang),
             lang: L, parts: lines({ id }, BOOK_PANES, L) };
         }) });
     }
@@ -915,7 +915,7 @@ function exportAuto() {
       const opts = (x.options || []).map((o, i) => String.fromCharCode(65 + i) + (f ? " : " : ": ") + o);
       const ok = q.correct.map(L => L + (f ? " : " : ": ") + ((x.options || [])[L.charCodeAt(0) - 65] || ""));
       const head = f ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : (q.correct.length > 1 ? "Correct answers" : "Correct answer");
-      return { title: "Question " + (k + 1), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
+      return { key: "q-" + q.id + "-" + Lq, title: "Question " + (k + 1), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
         parts: [x.scenario || "", x.question || "", ...opts, AUTO_PAUSE, head + ".", ...ok, x.explanation || ""] };
     };
     const pool = qs => (fr ? [...qs.filter(hasFr), ...qs.filter(q => !hasFr(q))] : qs);

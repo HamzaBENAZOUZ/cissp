@@ -503,7 +503,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "6.5";
+const APP_VERSION = "6.6";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -750,8 +750,8 @@ function tvSync() {
     tv.link.send({
       t: "sheet", ui: getLang(), lang, key: sec + ":" + r.id + ":" + pane + ":" + lang,
       kicker: sec === "lmsum" ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
-      title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, "fr")}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
-      pane: t("rev.pane." + pane, {}, r.lms ? "fr" : getLang()), head: revSpeech(r, pane, lang),
+      title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, lang)}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
+      pane: t("rev.pane." + pane, {}, lang), head: revSpeech(r, pane, lang),
       kind: ["sum", "bsum", "bess"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
     });
     return;
@@ -1387,7 +1387,7 @@ function revLines(r, pane, lang) {
 }
 /** En-tête lu avant la fiche (« Chapitre n. Titre. Volet. ») ; le texte lui-même est lu depuis la page. */
 function revSpeech(r, pane, lang) {
-  if (r.lms) return joinSpeech(["Domaine " + r.id, t("domain." + r.id, {}, "fr"), t("rev.pane." + pane, {}, "fr")]);
+  if (r.lms) return joinSpeech([(lang === "fr" ? "Domaine " : "Domain ") + r.id, t("domain." + r.id, {}, lang), t("rev.pane." + pane, {}, lang)]);
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
   const head = t("rev.pane." + pane, {}, lang);
   return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head]);
@@ -1426,12 +1426,12 @@ function renderRevision(sec = "revision") {
             ${PANES.map(p => `<button class="seg-btn" data-revpane="${p}" aria-pressed="${p === pane}">${esc(t("rev.pane." + p))}</button>`).join("")}
           </div>
           <div class="row rev-speak">
-            ${isLms ? (canSpeakFr ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="fr" lang="fr" title="Lire cette fiche en français (cliquer à nouveau pour arrêter)">🔊 Lire</button>` : "") : `
+            ${`
             ${canSpeak && !(lang === "fr" && canSpeakFr) ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="en" lang="en" title="Read this sheet aloud in English (click again to stop)">🔊 Listen</button>` : ""}
             ${canSpeakFr && lang === "fr" ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="fr" lang="fr" title="Lire cette fiche en français (cliquer à nouveau pour arrêter)">🔊 Lire</button>` : ""}`}
           </div>
         </div>
-        <div class="rev-pane"${isLms && lang !== "fr" ? ' lang="fr"' : ""}>${revPaneHtml(r, pane, lang)}</div>
+        <div class="rev-pane">${revPaneHtml(r, pane, lang)}</div>
       </div>
     </details>`;
   };
@@ -1444,7 +1444,7 @@ function renderRevision(sec = "revision") {
   app.innerHTML = `
   <div id="offline-slot"></div>
   <section class="hero">
-    <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : isLms ? "last-mile-summary" : "review"} --lang=${isLms ? "fr" : lang}</p>
+    <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : isLms ? "last-mile-summary" : "review"} --lang=${lang}</p>
     <h1 class="glitch" data-text="${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review"}">${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review"}</h1>
     ${secTabs(sec)}
     <p class="muted">${esc(t(isBook ? "book.sub" : isLms ? "lms.sub" : "rev.sub", { n: ITEMS.length }))}</p>
@@ -1455,7 +1455,7 @@ function renderRevision(sec = "revision") {
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => { stopSpeak(); setSection(b.dataset.section); });
   app.querySelectorAll(".rev-card").forEach(d => {
     const id = +d.dataset.rev, r = ITEMS.find(x => x.id === id);
-    const shownLang = () => (isLms ? "fr" : getLang());
+    const shownLang = () => getLang();
     d.addEventListener("toggle", () => {
       if (d.open) { if (!revOpen.has(key(id))) revOpen.set(key(id), PANES[0]); tvSheet(sec, r, paneOf(id), shownLang()); }
       else { revOpen.delete(key(id)); if (tvRev && tvRev.sec === sec && tvRev.r.id === id) tvSheet(sec, null); }
@@ -1475,7 +1475,7 @@ function renderRevision(sec = "revision") {
       // de la lecture, pour pouvoir le suivre, puis on remet la langue du site.
       const box = d.querySelector(".rev-pane"), shown = getLang();
       let restore = null;
-      if (l !== shown && !isLms) {
+      if (l !== shown) {
         box.innerHTML = revPaneHtml(r, pane, l); box.lang = l;
         restore = () => { if (box.isConnected && (paneOf(id)) === pane) { box.innerHTML = revPaneHtml(r, pane, getLang()); box.removeAttribute("lang"); } };
       }

@@ -492,6 +492,7 @@ function renderSpeedBtn() {
 }
 let speedClock = null, speedNextT = null;
 function speedReset() {
+  tvClock("");
   clearInterval(speedClock); speedClock = null; clearTimeout(speedNextT); speedNextT = null;
   if (state.quiz) state.quiz.sp = null;
 }
@@ -502,7 +503,22 @@ function speedShow() {
   const sp = z.sp, fr = getLang() === "fr";
   el.classList.toggle("danger", sp.phase === "count" && sp.left <= 10);
   el.textContent = sp.phase === "reading" ? "⚡ 🔊" : sp.phase === "count" ? `⏱ ${sp.left}` : sp.phase === "next" ? `⏭ ${sp.left}` : "⚡";
+  tvClock(el.textContent, el.classList.contains("danger"));
   el.title = sp.phase === "count" ? (fr ? "Temps restant pour répondre" : "Time left to answer") : sp.phase === "next" ? (fr ? "Question suivante dans…" : "Next question in…") : (fr ? "Lecture de la question" : "Reading the question");
+}
+/** Télé connectée : le chrono Speed s'affiche aussi sur la télé (message « clock », texte vide = masqué). */
+let tvClockLast = "";
+function tvClock(txt, danger) {
+  if (!tv || !tv.ok) return;
+  const k = txt + "|" + !!danger; if (k === tvClockLast) return; tvClockLast = k;
+  tv.link.send({ t: "clock", txt, danger: !!danger });
+}
+/** Télé : affiche le chrono reçu du téléphone, en bas à gauche. */
+function tvShowClock(txt, danger) {
+  let el = document.getElementById("speed-clock");
+  if (!txt) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("span"); el.id = "speed-clock"; el.className = "speed-clock mono"; document.body.appendChild(el); }
+  el.textContent = txt; el.classList.toggle("danger", !!danger);
 }
 /** Durée approximative d'une lecture faite sur la télé (le téléphone n'en voit pas la fin). */
 const tvReadMs = box => Math.max(4000, (box ? box.textContent.split(/\s+/).length : 40) / 2.6 / ttsRate * 1000);
@@ -527,29 +543,41 @@ function speedStep() {
       }, 1000);
     };
     // Question puis chaque proposition, 1 s de pause entre chaque, le tout lu deux fois ; le chrono démarre ensuite.
-    if (tv && tv.ok) { tvSpeak("question"); setTimeout(() => { if (alive() && z.sp === sp && !sp.touched && !z.checked[i]) tvSpeak("question"); }, tvReadMs(box) + 1500); setTimeout(startCount, 2 * tvReadMs(box) + 1500); }
-    else if (canSpeak && box) {
-      const nOpt = box.querySelectorAll('[data-tts="opt"]').length, steps = 2 * (1 + nOpt);
-      const chunk = k => {   // morceau n° k, pris dans l'affichage actuel (il peut avoir été refait entre-temps)
-        const bx = app.querySelector(".question-panel"); if (!bx) return null;
-        const lang = bx.lang || getLang(), fr = lang === "fr", j = k % (1 + nOpt), el = x => bx.querySelector(`[data-tts="${x}"]`);
-        if (j === 0) return { lang, parts: [k ? (fr ? "Je répète." : "Once again.") : "Question", { el: el("scenario") }, { el: el("q") }] };
-        const o = bx.querySelectorAll('[data-tts="opt"]')[j - 1];
-        return { lang, parts: [{ el: o, prefix: String.fromCharCode(64 + j) + (fr ? " :" : ":") }] };
-      };
-      const run = k => {
-        if (!alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i]) return;
-        // une réponse a été touchée pendant la lecture : on ne relit pas la question, le chrono démarre
-        if (k >= steps || sp.touched || z.picks[i].length) { startCount(); return; }
-        const c = chunk(k); if (!c) { startCount(); return; }
-        const btn = app.querySelector('.question-panel [data-speakmode="question"]') || document.createElement("button");
-        speakUnits("speed:" + q.id + ":" + i + ":" + k, speechUnits(c.parts, c.lang), c.lang, btn, () => { clearTimeout(speedNextT); speedNextT = setTimeout(() => run(k + 1), 1000); });
-      };
-      run(0);
+    sp.startCount = startCount;
+    if (tv && tv.ok) {   // télé : c'est elle qui lit, et elle prévient quand elle a fini (repli : durée estimée)
+      tvDoneCb = m => { if (m.mode === "speedq" && m.n === i + 1) startCount(); };
+      tvSpeak("speedq"); setTimeout(startCount, 2 * tvReadMs(box) + 8000);
+    } else if (canSpeak && box) {
+      readTwice("speed:" + q.id + ":" + i, () => !alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i] ? "abort"
+        : sp.touched || z.picks[i].length ? "done" : true, startCount);
     } else startCount();
   }
   speedShow();
 }
+/**
+ * Lecture Speed de la question affichée : la question puis chaque proposition, 1 s de pause entre chaque, le tout deux fois.
+ * cont() avant chaque morceau : true = continuer, "done" = arrêter et appeler onDone, "abort" = tout arrêter.
+ */
+function readTwice(key, cont, onDone) {
+  const box0 = app.querySelector(".question-panel"); if (!box0) { onDone(); return; }
+  const nOpt = box0.querySelectorAll('[data-tts="opt"]').length, steps = 2 * (1 + nOpt);
+  const chunk = k => {   // morceau n° k, pris dans l'affichage actuel (il peut avoir été refait entre-temps)
+    const bx = app.querySelector(".question-panel"); if (!bx) return null;
+    const lang = bx.lang || getLang(), fr = lang === "fr", j = k % (1 + nOpt), el = x => bx.querySelector(`[data-tts="${x}"]`);
+    if (j === 0) return { lang, parts: [k ? (fr ? "Je répète." : "Once again.") : "Question", { el: el("scenario") }, { el: el("q") }] };
+    const o = bx.querySelectorAll('[data-tts="opt"]')[j - 1];
+    return { lang, parts: [{ el: o, prefix: String.fromCharCode(64 + j) + (fr ? " :" : ":") }] };
+  };
+  const run = k => {
+    const c0 = cont(); if (c0 === "abort") return;
+    if (c0 === "done" || k >= steps) { onDone(); return; }
+    const c = chunk(k); if (!c) { onDone(); return; }
+    const btn = app.querySelector('.question-panel [data-speakmode="question"]') || document.getElementById("tv-speak-dummy") || document.createElement("button");
+    speakUnits(key + ":" + k, speechUnits(c.parts, c.lang), c.lang, btn, () => { clearTimeout(speedNextT); speedNextT = setTimeout(() => run(k + 1), 1000); });
+  };
+  run(0);
+}
+let tvDoneCb = null;   // téléphone : fin de lecture annoncée par la télé (mode Speed)
 /** Temps écoulé : bonne réponse affichée et lue, question comptée fausse. */
 function speedTimeout() {
   const z = state.quiz; if (!z || z.checked[z.i]) return;
@@ -579,7 +607,10 @@ function speedAfterCheck() {
     }, 1000);
   };
   const box = app.querySelector(".question-panel"), q = z.questions[i];
-  if (tv && tv.ok) { tvSpeak("answer"); setTimeout(goNext, tvReadMs(box && box.querySelector(".explain"))); }
+  if (tv && tv.ok) {
+    tvDoneCb = m => { if (m.mode === "answer" && m.n === i + 1) goNext(); };
+    tvSpeak("answer"); setTimeout(goNext, tvReadMs(box && box.querySelector(".explain")) + 8000);
+  }
   else if (canSpeak && box) {
     const lang = box.lang || getLang();
     const btn = box.querySelector('.speak-row [data-speakmode="answer"]') || document.createElement("button");
@@ -652,7 +683,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "7.4";
+const APP_VERSION = "7.5";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -873,6 +904,7 @@ function tvConnect(code, auto = false) {
   const fr = getLang() === "fr";
   const link = tvChannel(code, m => {
     if (!tv || tv.link !== link) return;
+    if (m.t === "done") { if (tvDoneCb) tvDoneCb(m); return; }
     if (m.t === "here") {   // la télé répond (ou vient de s'ouvrir)
       const first = !tv.ok; tv.ok = true; tvSave(code); renderTvBtn();
       if (first) toast(fr ? "📺 Télé connectée : réponds sur le téléphone" : "📺 TV connected: answer on the phone", "ok");
@@ -953,6 +985,9 @@ function renderTv() {
   if (!tv) {
     const link = tvChannel(code, m => {
       if (m.t === "hi") { link.send({ t: "here" }); return; }
+      if (m.t === "clock") { tvShowClock(m.txt, m.danger); return; }
+      if (m.t === "hush") { tvReadTok++; stopSpeak(); return; }
+      if (m.t === "bye" || m.t === "idle") tvShowClock("");
       if (m.t === "bye") { tvLast = null; stopSpeak(); tvRender(); return; }
       if (m.t === "idle") { tvLast = { t: "idle", ui: m.lang }; stopSpeak(); tvRender(); return; }
       // Même contenu renvoyé par le téléphone (il se réaffiche souvent) : on ne touche pas à l'écran, sinon la lecture
@@ -1044,8 +1079,14 @@ function tvRead(mode) {
   }
   if (m.t !== "q") return;
   const box = app.querySelector(".question-panel"); if (!box) return;
-  speakUnits("tv:" + m.n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn);
+  const tok = ++tvReadTok, n = m.n, done = () => { if (tv && tok === tvReadTok) tv.link.send({ t: "done", mode, n }); };
+  if (mode === "speedq") {   // mode Speed : question + propositions deux fois, puis on prévient le téléphone
+    readTwice("tv:" + n + ":speedq", () => tok !== tvReadTok || !tvLast || tvLast.n !== n || tvLast.checked ? "abort" : true, done);
+    return;
+  }
+  speakUnits("tv:" + n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn, done);
 }
+let tvReadTok = 0;
 
 // ------------------------------------------------------------------ Android Auto
 /* L'appli prépare le contenu à écouter en voiture (fiches et quiz audio) dans la langue de l'appli ;
@@ -2098,7 +2139,10 @@ function toggle(L) {
   if (q.multi) p = p.includes(L) ? p.filter(x => x !== L) : [...p, L];
   else p = p[0] === L ? [] : [L];
   z.picks[z.i] = p;
-  if (z.sp && z.sp.i === z.i) z.sp.touched = true;   // mode Speed : plus de relecture de la question
+  if (z.sp && z.sp.i === z.i) {   // mode Speed : plus de relecture de la question
+    z.sp.touched = true;
+    if (tv && tv.ok && z.sp.phase === "reading") { tv.link.send({ t: "hush" }); if (z.sp.startCount) z.sp.startCount(); }
+  }
   autoSave();
   if (speedActive(z) && !q.multi && p.length) { check(); return; }   // Speed : une seule réponse = validée tout de suite
   renderQuiz();

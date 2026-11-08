@@ -1,7 +1,7 @@
 {
- "versionCode": 58,
- "versionName": "7.4",
+ "versionCode": 59,
+ "versionName": "7.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Après une mauvaise réponse, la voix dit « Mauvaise réponse, la bonne réponse est… » (et « Pas de réponse » si le temps est écoulé).",
- "notes": "After a wrong answer, the voice says \"Wrong answer, the correct answer is…\" (and \"No answer\" when time runs out)."
+ "notes_fr": "Mode Speed sur la télé : le chrono s'affiche en bas à gauche de la télé, et le téléphone attend la fin de la lecture sur la télé avant de lancer le chrono.",
+ "notes": "Speed mode on the TV: the timer shows at the bottom left of the TV, and the phone waits for the TV to finish reading before starting the timer."
 }

@@ -723,3 +723,4 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
   font-size: .8rem; padding: 2px 8px; border-radius: 999px; opacity: .7; color: var(--muted); background: color-mix(in srgb, var(--muted) 14%, transparent);
   font-variant-numeric: tabular-nums; pointer-events: none; }
 .speed-clock.danger { opacity: .95; color: #fff; background: #d64545; }
+.tv-mode .speed-clock { bottom: 22px; left: 18px; font-size: 1rem; }

@@ -1,7 +1,7 @@
 {
- "versionCode": 63,
- "versionName": "7.9",
+ "versionCode": 64,
+ "versionName": "8.0",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : réponds depuis la télé, à la voix (bouton micro de la télécommande : « A », « réponse C »…) ou avec les flèches et OK ; la réponse part au téléphone.",
- "notes": "TV: answer from the TV, by voice (remote mic button: \"A\", \"answer C\"…) or with the arrows and OK; the answer is sent to the phone."
+ "notes_fr": "Télé : bouton 🎤 « Répondre à la voix » à l'écran (le bouton micro de la télécommande est gardé par l'Assistant Google) ; l'appli accepte aussi la phrase transmise par l'Assistant.",
+ "notes": "TV: on-screen 🎤 \"Answer by voice\" button (the remote mic button is taken by Google Assistant); the app also accepts the phrase passed by the Assistant."
 }

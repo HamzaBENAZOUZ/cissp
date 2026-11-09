@@ -1,7 +1,7 @@
 {
- "versionCode": 67,
- "versionName": "8.3",
+ "versionCode": 68,
+ "versionName": "8.4",
  "apk": "cissp-training.apk",
- "notes_fr": "Mode Speed : lecture continue de la question avec de vraies pauses (même voix, lecteur qui reste affiché) ; la correction n'est plus sautée dans le navigateur.",
- "notes": "Speed mode: continuous question reading with real pauses (same voice, player stays on screen); the explanation is no longer skipped in the browser."
+ "notes_fr": "Lecture vocale : si le moteur choisi (ex. voix Edge via TTS Server) échoue ou s'il n'y a pas de réseau, l'appli bascule automatiquement sur la voix Google hors ligne.",
+ "notes": "Speech: if the chosen engine (e.g. Edge voices via TTS Server) fails or there is no network, the app falls back to the offline Google voice."
 }

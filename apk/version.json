@@ -1,7 +1,7 @@
 {
- "versionCode": 72,
- "versionName": "8.8",
+ "versionCode": 73,
+ "versionName": "8.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : la voix Google de secours démarre même si le moteur choisi (TTS Server) ne répond pas ; le moteur utilisé est affiché à l'écran de la voiture.",
- "notes": "Android Auto: the Google backup voice starts even if the chosen engine (TTS Server) does not respond; the engine in use is shown on the car screen."
+ "notes_fr": "Android Auto : l'audio de TTS Server est enregistré puis joué par l'appli, pour qu'il arrive bien dans la voiture.",
+ "notes": "Android Auto: TTS Server audio is recorded then played by the app so it reaches the car."
 }

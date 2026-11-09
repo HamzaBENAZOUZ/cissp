@@ -1,7 +1,7 @@
 {
- "versionCode": 71,
- "versionName": "8.7",
+ "versionCode": 72,
+ "versionName": "8.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : le lecteur recharge le moteur vocal choisi dans Android (ex. TTS Server) s'il a changé ; une voix multilingue peut lire l'anglais.",
- "notes": "Android Auto: the player reloads the Android preferred speech engine (e.g. TTS Server) when it changed; a multilingual voice can read English."
+ "notes_fr": "Android Auto : la voix Google de secours démarre même si le moteur choisi (TTS Server) ne répond pas ; le moteur utilisé est affiché à l'écran de la voiture.",
+ "notes": "Android Auto: the Google backup voice starts even if the chosen engine (TTS Server) does not respond; the engine in use is shown on the car screen."
 }

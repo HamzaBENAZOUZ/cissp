@@ -1,7 +1,7 @@
 {
- "versionCode": 70,
- "versionName": "8.6",
+ "versionCode": 71,
+ "versionName": "8.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture vocale (appli et Android Auto) : si le moteur choisi reste muet 7 s ou ne connaît pas la langue (ex. TTS Server avec une seule voix française), la voix Google prend le relais.",
- "notes": "Speech (app and Android Auto): if the chosen engine stays silent for 7 s or does not support the language, the Google voice takes over."
+ "notes_fr": "Android Auto : le lecteur recharge le moteur vocal choisi dans Android (ex. TTS Server) s'il a changé ; une voix multilingue peut lire l'anglais.",
+ "notes": "Android Auto: the player reloads the Android preferred speech engine (e.g. TTS Server) when it changed; a multilingual voice can read English."
 }

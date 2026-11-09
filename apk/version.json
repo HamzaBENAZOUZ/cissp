@@ -1,7 +1,7 @@
 {
- "versionCode": 69,
- "versionName": "8.5",
+ "versionCode": 70,
+ "versionName": "8.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : même repli automatique sur la voix Google hors ligne si le moteur choisi échoue ou sans réseau.",
- "notes": "Android Auto: same automatic fallback to the offline Google voice when the chosen engine fails or there is no network."
+ "notes_fr": "Lecture vocale (appli et Android Auto) : si le moteur choisi reste muet 7 s ou ne connaît pas la langue (ex. TTS Server avec une seule voix française), la voix Google prend le relais.",
+ "notes": "Speech (app and Android Auto): if the chosen engine stays silent for 7 s or does not support the language, the Google voice takes over."
 }

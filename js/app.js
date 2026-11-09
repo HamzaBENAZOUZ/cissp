@@ -730,7 +730,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.2";
+const APP_VERSION = "9.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1283,7 +1283,19 @@ function autoGroups(lang) {
     const wrong = mistakes();
     if (wrong.length) groups.push({ title: fr ? "Quiz audio · Mes erreurs" : "Audio quiz · My mistakes",
       subtitle: Math.min(wrong.length, 60) + " questions", items: pick(pool(wrong), 60).map(quizItem) });
+    // Mode examen en voiture : question et propositions lues, réponse touchée à l'écran (boutons A-D), bilan à la fin.
+    const examItem = (q, k) => {
+      const x = qText(q, lang), Lq = x.lang, f = Lq === "fr", L = q.correct[0];
+      const opts = (x.options || []).map((o, i) => String.fromCharCode(65 + i) + (f ? " : " : ": ") + o);
+      return { key: "x-" + q.id + "-" + Lq, title: (f ? "Examen · Question " : "Exam · Question ") + (k + 1), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
+        parts: [x.scenario || "", x.question || "", ...opts, f ? "Ta réponse : A, B, C ou D ?" : "Your answer: A, B, C or D?"],
+        exam: { a: L, n: (x.options || []).length, ok: L + (f ? " : " : ": ") + ((x.options || [])[L.charCodeAt(0) - 65] || ""), x: x.explanation || "" } };
+    };
     const ix = own("isc2");
+    const ixOne = ix.filter(q => q.correct.length === 1 && (q.options || []).length <= 4);
+    if (ixOne.length) groups.push({ title: fr ? "Mode examen · ISC2" : "Exam mode · ISC2",
+      subtitle: fr ? "25 questions, réponse à l'écran, bilan à la fin" : "25 questions, answer on screen, score at the end",
+      items: pick(fr ? ixOne.filter(hasFr).length ? ixOne.filter(hasFr) : ixOne : ixOne, 25).map(examItem) });
     if (ix.length) groups.push({ title: fr ? "Quiz audio · Examen blanc ISC2" : "Audio quiz · ISC2 Mock Exam",
       subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? ix.filter(hasFr).length ? ix.filter(hasFr) : ix : ix, 40).map(quizItem) });
     const lm = own("lastmile");

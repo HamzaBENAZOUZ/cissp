@@ -1,7 +1,7 @@
 {
- "versionCode": 76,
- "versionName": "9.2",
+ "versionCode": 77,
+ "versionName": "9.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Option ESL : temps doublé en mode examen. Quiz audio de l'Examen blanc ISC2.",
- "notes": "ESL option: double time in exam mode. ISC2 Mock Exam audio quiz."
+ "notes_fr": "Android Auto : mode examen ISC2 (25 questions, réponse A B C D sur l'écran de la voiture, bilan et correction à la fin).",
+ "notes": "Android Auto: ISC2 exam mode (25 questions, answer A B C D on the car screen, score and review at the end)."
 }

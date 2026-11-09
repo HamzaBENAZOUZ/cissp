@@ -1,7 +1,7 @@
 {
- "versionCode": 66,
- "versionName": "8.2",
+ "versionCode": 67,
+ "versionName": "8.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : pendant une alerte (GPS, appel…), la lecture se met en pause au lieu de baisser le volume, puis reprend à la phrase interrompue.",
- "notes": "Android Auto: during an alert (GPS, call…), reading pauses instead of lowering the volume, then resumes at the interrupted sentence."
+ "notes_fr": "Mode Speed : lecture continue de la question avec de vraies pauses (même voix, lecteur qui reste affiché) ; la correction n'est plus sautée dans le navigateur.",
+ "notes": "Speed mode: continuous question reading with real pauses (same voice, player stays on screen); the explanation is no longer skipped in the browser."
 }

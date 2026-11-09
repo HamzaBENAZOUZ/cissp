@@ -81,9 +81,10 @@ let speakingId = null, speakSeq = 0, speakEnd = null;
 let player = null;   // { key, units, lang, btn, idx, paused }
 const RATES = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5, 1.75, 2];
 let ttsRate = (() => { try { const v = parseFloat(localStorage.getItem("cissp-tts-rate")); return RATES.includes(v) ? v : 1; } catch { return 1; } })();
+let lastCancel = 0;
 function haltEngine() {
   speakSeq++;   // invalide les événements de la lecture en cours
-  if (nativeTTS) nativeTTS.stop(); else if (canSpeak) speechSynthesis.cancel();
+  if (nativeTTS) nativeTTS.stop(); else if (canSpeak) { speechSynthesis.cancel(); lastCancel = Date.now(); }
 }
 function stopSpeak() {
   haltEngine();
@@ -185,7 +186,11 @@ function renderTvProgress() {
 function renderPlayer() {
   renderTvProgress();
   let bar = document.getElementById("tts-bar");
-  if (!player) { if (bar) bar.hidden = true; return; }
+  if (!player) {   // mode Speed : le lecteur reste affiché entre deux lectures (chrono, question suivante)
+    if (bar) { if (state.view === "quiz" && speedActive(state.quiz)) bar.classList.add("idle"); else bar.hidden = true; }
+    return;
+  }
+  if (bar) bar.classList.remove("idle");
   if (!bar) {
     bar = document.createElement("div"); bar.id = "tts-bar"; bar.className = "tts-bar"; bar.setAttribute("role", "toolbar");
     bar.innerHTML = `<div class="tts-ctl"></div><select class="tts-voice"></select>`;
@@ -332,6 +337,7 @@ function speechUnits(parts, lang) {
   const units = [];
   for (const p of parts) {
     if (!p) continue;
+    if (p.pause) { units.push({ pause: p.pause, text: "" }); continue; }   // silence (mode Speed : 1 s entre les propositions)
     if (typeof p === "string") { const x = joinSpeech([p]); if (x) units.push({ text: x }); continue; }
     if (!p.el) continue;
     const text = p.el.textContent, spans = sentenceSpans(text, lang);
@@ -349,7 +355,9 @@ function speakUnits(key, units, lang, btn, onEnd) {
   if (!canSpeak) return;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  units = units.filter(u => u.text);
+  units = units.filter(u => u.text || u.pause);
+  while (units.length && units[units.length - 1].pause) units.pop();
+  if (!units.some(u => u.text)) units = [];
   if (!units.length) { if (onEnd) onEnd(); return; }
   speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
   player = { key, units, lang, btn, idx: 0, paused: false };
@@ -361,7 +369,7 @@ function playFrom(from) {
   const units = P.units.slice(from), lang = P.lang;
   const seq = ++speakSeq, alive = () => seq === speakSeq && player === P;
   keepAwake(true);
-  const mark = i => { if (alive()) { P.idx = from + i; hlShow(units[i]); renderPlayer(); } };
+  let mark = i => { if (alive()) { P.idx = from + i; hlShow(units[i]); renderPlayer(); } };
   const done = () => {
     if (!alive()) return;
     speakSeq++; speakingId = null; player = null; P.btn.classList.remove("on"); hlClear(); keepAwake(false);
@@ -379,7 +387,12 @@ function playFrom(from) {
       let sid = null, heard = false;
       window.__ttsMark = (i, x) => { if (sid && typeof x === "string" && x !== sid) return; heard = true; mark(i); };
       window.__ttsDone = x => { if (sid && typeof x === "string" && x !== sid) return; heard = true; done(); };
-      const go = () => { sid = nativeTTS.speakParts(JSON.stringify(units.map(u => u.text)), L) || null; };
+      // silences : envoyés à l'appli si elle sait les jouer, sinon ignorés (les repères restent alignés sur les phrases)
+      const canPause = typeof nativeTTS.canPause === "function";
+      const sent = [], at = [];
+      units.forEach((u, k) => { if (u.pause && !canPause) return; sent.push(u.pause ? `##PAUSE:${u.pause}##` : u.text); at.push(k); });
+      const markRaw = mark; mark = i => markRaw(at[i] ?? i);
+      const go = () => { sid = nativeTTS.speakParts(JSON.stringify(sent), L) || null; };
       go();
       // Le moteur vocal d'Android ne démarre parfois pas (souvent la toute première lecture, moteur endormi) :
       // si rien n'a commencé au bout de 2,5 s, on relance une fois.
@@ -389,6 +402,7 @@ function playFrom(from) {
       const next = () => {
         if (!alive()) return;
         if (i >= units.length) { done(); return; }
+        if (units[i].pause) { mark(i); setTimeout(next, units[i++].pause); return; }
         mark(i); const x = units[i++].text;
         window.__ttsDone = next;
         if (lang === "fr" && nativeTTS.speakLang) nativeTTS.speakLang(x, L); else nativeTTS.speak(x);
@@ -397,16 +411,36 @@ function playFrom(from) {
     }
     return;
   }
+  // Navigateur : une phrase après l'autre (les silences sont de vraies pauses), avec la même voix tout du long.
   const v = lang === "fr" ? pickVoiceFr() : pickVoice();
-  units.forEach((x, i) => {
-    const u = new SpeechSynthesisUtterance(x.text);
-    u.lang = L; u.rate = ttsRate;
-    if (v) u.voice = v;
-    u.onstart = () => mark(i);
-    if (i === units.length - 1) u.onend = done;
-    u.onerror = e => { if (alive() && e.error !== "interrupted" && e.error !== "canceled") stopSpeak(); };
-    speechSynthesis.speak(u);
-  });
+  let i = 0;
+  const next = () => {
+    if (!alive()) return;
+    if (i >= units.length) { done(); return; }
+    const k = i++, x = units[k];
+    if (x.pause) { mark(k); setTimeout(next, x.pause); return; }
+    let started = false, tries = 0;
+    const say = () => {
+      const u = new SpeechSynthesisUtterance(x.text);
+      u.lang = L; u.rate = ttsRate;
+      if (v) u.voice = v;
+      const t0 = Date.now();
+      u.onstart = () => { started = true; mark(k); };
+      u.onend = () => {
+        if (!alive()) return;
+        // Chrome « avale » parfois une phrase juste après un arrêt (fin immédiate sans début) : on la redit une fois
+        if (!started && Date.now() - t0 < 250 && tries++ < 1) { setTimeout(say, 150); return; }
+        next();
+      };
+      u.onerror = e => { if (!alive() || e.error === "interrupted" || e.error === "canceled") return; next(); };
+      speechSynthesis.speak(u);
+    };
+    say();
+  };
+  // juste après un arrêt, Chrome ignore parfois la lecture suivante : on lui laisse un instant
+  const wait = Date.now() - lastCancel < 200 ? 150 : 0;
+  renderPlayer();
+  if (wait) setTimeout(next, wait); else next();
 }
 /** Lecture d'une question (page du quiz ou correction) : le texte lu est celui affiché dans la boîte de la question. */
 function quizParts(q, box, lang, mode) {
@@ -574,23 +608,17 @@ function speedStep() {
  * cont() avant chaque morceau : true = continuer, "done" = arrêter et appeler onDone, "abort" = tout arrêter.
  */
 function readTwice(key, cont, onDone) {
-  const box0 = app.querySelector(".question-panel"); if (!box0) { onDone(); return; }
-  const nOpt = box0.querySelectorAll('[data-tts="opt"]').length, steps = 2 * (1 + nOpt);
-  const chunk = k => {   // morceau n° k, pris dans l'affichage actuel (il peut avoir été refait entre-temps)
-    const bx = app.querySelector(".question-panel"); if (!bx) return null;
-    const lang = bx.lang || getLang(), fr = lang === "fr", j = k % (1 + nOpt), el = x => bx.querySelector(`[data-tts="${x}"]`);
-    if (j === 0) return { lang, parts: [k ? (fr ? "Je répète." : "Once again.") : "Question", { el: el("scenario") }, { el: el("q") }] };
-    const o = bx.querySelectorAll('[data-tts="opt"]')[j - 1];
-    return { lang, parts: [{ el: o, prefix: String.fromCharCode(64 + j) + (fr ? " :" : ":") }] };
-  };
-  const run = k => {
-    const c0 = cont(); if (c0 === "abort") return;
-    if (c0 === "done" || k >= steps) { onDone(); return; }
-    const c = chunk(k); if (!c) { onDone(); return; }
-    const btn = app.querySelector('.question-panel [data-speakmode="question"]') || document.getElementById("tv-speak-dummy") || document.createElement("button");
-    speakUnits(key + ":" + k, speechUnits(c.parts, c.lang), c.lang, btn, () => { clearTimeout(speedNextT); speedNextT = setTimeout(() => run(k + 1), 1000); });
-  };
-  run(0);
+  const bx = app.querySelector(".question-panel"); if (!bx) { onDone(); return; }
+  const lang = bx.lang || getLang(), fr = lang === "fr", el = x => bx.querySelector(`[data-tts="${x}"]`);
+  const opts = [...bx.querySelectorAll('[data-tts="opt"]')], parts = [];
+  // une seule lecture continue (même voix, lecteur stable) : silences d'1 s entre la question et chaque proposition
+  for (const pass of [0, 1]) {
+    parts.push(pass ? (fr ? "Je répète." : "Once again.") : "Question", { el: el("scenario") }, { el: el("q") });
+    opts.forEach((o, j) => parts.push({ pause: 1000 }, { el: o, prefix: String.fromCharCode(65 + j) + (fr ? " :" : ":") }));
+    if (!pass) parts.push({ pause: 1000 });
+  }
+  const btn = bx.querySelector('[data-speakmode="question"]') || document.getElementById("tv-speak-dummy") || document.createElement("button");
+  speakUnits(key, speechUnits(parts, lang), lang, btn, () => { if (cont() !== "abort") onDone(); });
 }
 let tvDoneCb = null;   // téléphone : fin de lecture annoncée par la télé (mode Speed)
 /** Temps écoulé : bonne réponse affichée et lue, question comptée fausse. */
@@ -698,7 +726,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "8.2";
+const APP_VERSION = "8.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1432,6 +1460,7 @@ async function refreshProgress() {
 
 function route() {
   stopSpeak();
+  setTimeout(renderPlayer, 0);   // nouvel écran : le lecteur gardé du mode Speed disparaît hors du quiz
   if (!state.session || !state.chapters.length) return;
   const h = location.hash.replace(/^#\/?/, "");
   if (state.quiz && h !== "quiz") {

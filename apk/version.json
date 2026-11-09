@@ -1,7 +1,7 @@
 {
- "versionCode": 73,
- "versionName": "8.9",
+ "versionCode": 74,
+ "versionName": "9.0",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : l'audio de TTS Server est enregistré puis joué par l'appli, pour qu'il arrive bien dans la voiture.",
- "notes": "Android Auto: TTS Server audio is recorded then played by the app so it reaches the car."
+ "notes_fr": "Lecture vocale : l'appli n'impose plus de langue à un moteur comme TTS Server (qui n'annonce que le chinois) ; il lit avec la voix cochée chez lui.",
+ "notes": "Speech: the app no longer forces a language on engines like TTS Server; it reads with the voice selected there."
 }

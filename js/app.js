@@ -721,6 +721,8 @@ function toast(msg, kind = "info", ms = 3800) {
   setTimeout(() => el.classList.add("show"), 10);
   setTimeout(() => { el.classList.remove("show"); setTimeout(() => el.remove(), 300); }, ms);
 }
+const ESL_KEY = "cissp-esl";
+const eslOn = () => { try { return localStorage.getItem(ESL_KEY) === "1"; } catch { return false; } };
 function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
 function errorPanel(title, msg, hint) {
   app.innerHTML = `<section class="panel error-panel"><h2 class="mono">${esc(title)}</h2><p>${esc(msg)}</p>
@@ -728,7 +730,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.1";
+const APP_VERSION = "9.2";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1281,6 +1283,9 @@ function autoGroups(lang) {
     const wrong = mistakes();
     if (wrong.length) groups.push({ title: fr ? "Quiz audio · Mes erreurs" : "Audio quiz · My mistakes",
       subtitle: Math.min(wrong.length, 60) + " questions", items: pick(pool(wrong), 60).map(quizItem) });
+    const ix = own("isc2");
+    if (ix.length) groups.push({ title: fr ? "Quiz audio · Examen blanc ISC2" : "Audio quiz · ISC2 Mock Exam",
+      subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? ix.filter(hasFr).length ? ix.filter(hasFr) : ix : ix, 40).map(quizItem) });
     const lm = own("lastmile");
     if (lm.length) groups.push({ title: fr ? "Quiz audio · Last Mile" : "Audio quiz · Last Mile",
       subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? lm.filter(hasFr).length ? lm.filter(hasFr) : lm : lm, 40).map(quizItem) });
@@ -1991,6 +1996,7 @@ function renderHome() {
         </select>
         <button class="btn btn-primary" id="btn-exam">${esc(t("home.start"))}</button>
       </div>
+      <label class="esl-opt small"><input type="checkbox" id="esl-x2" ${eslOn() ? "checked" : ""}> ${esc(t("home.esl"))}</label>
     </div>
     <div class="action">
       <h3 class="mono">${esc(t("home.mistakes"))}</h3>
@@ -2014,7 +2020,10 @@ function renderHome() {
 
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => setSection(b.dataset.section));
   app.querySelectorAll("[data-cert]").forEach(b => b.onclick = () => setCert(b.dataset.cert));
-  const secPerQ = cert === "ccsp" ? 96 : 72;   // CCSP : 150 questions en 4 h ; CISSP : 72 s par question
+  // CCSP : 150 questions en 4 h ; CISSP : 72 s par question ; option ESL (anglais langue étrangère) = temps doublé.
+  const secPerQ = (cert === "ccsp" ? 96 : 72) * (eslOn() ? 2 : 1);
+  const esl = document.getElementById("esl-x2");
+  if (esl) esl.onchange = () => { try { localStorage.setItem(ESL_KEY, esl.checked ? "1" : ""); } catch { /* ignore */ } renderHome(); };
   app.querySelectorAll("[data-exam-chapter]").forEach(b => b.onclick = () => {
     const id = +b.dataset.examChapter;
     const qs = state.questions.filter(q => q.chapter_id === id);

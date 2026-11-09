@@ -1,7 +1,7 @@
 {
- "versionCode": 65,
- "versionName": "8.1",
+ "versionCode": 66,
+ "versionName": "8.2",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : bouton 🌐 pour passer du français à l'anglais (et inversement) directement dans la voiture.",
- "notes": "Android Auto: 🌐 button to switch between French and English right in the car."
+ "notes_fr": "Android Auto : pendant une alerte (GPS, appel…), la lecture se met en pause au lieu de baisser le volume, puis reprend à la phrase interrompue.",
+ "notes": "Android Auto: during an alert (GPS, call…), reading pauses instead of lowering the volume, then resumes at the interrupted sentence."
 }

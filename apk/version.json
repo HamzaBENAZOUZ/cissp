@@ -1,7 +1,7 @@
 {
- "versionCode": 64,
- "versionName": "8.0",
+ "versionCode": 65,
+ "versionName": "8.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : bouton 🎤 « Répondre à la voix » à l'écran (le bouton micro de la télécommande est gardé par l'Assistant Google) ; l'appli accepte aussi la phrase transmise par l'Assistant.",
- "notes": "TV: on-screen 🎤 \"Answer by voice\" button (the remote mic button is taken by Google Assistant); the app also accepts the phrase passed by the Assistant."
+ "notes_fr": "Android Auto : bouton 🌐 pour passer du français à l'anglais (et inversement) directement dans la voiture.",
+ "notes": "Android Auto: 🌐 button to switch between French and English right in the car."
 }

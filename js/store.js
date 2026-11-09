@@ -3,6 +3,7 @@
 import { idbGet, idbSet, idbClear, offlineEnabled, setOfflineEnabled, isNetErr, withTimeout, autonomous, setAutonomous } from "./offline.js";
 
 const DOMAIN_OF = {1:1,2:1,3:1,4:1,5:2,6:3,7:3,8:3,9:3,10:3,11:4,12:4,13:5,14:5,15:6,16:7,17:7,18:7,19:7,20:8,21:8,
+  501:1,502:2,503:3,504:4,505:5,506:6,507:7,508:8,   // examen blanc ISC2 (questions originales)
   101:1,102:2,103:3,104:4,105:5,106:6,107:7,108:8,   // 101-112 : Official Practice Tests (109-112 = tests complets)
   // CCSP : Study Guide 3e éd. (201-210) et Official Practice Tests 3e éd. (301-306 = domaines 1-6, 307-308 = tests complets)
   201:1,202:2,203:2,204:3,205:3,206:4,207:5,208:5,209:6,210:6,
@@ -415,7 +416,7 @@ export class LocalStore {
     const raw = await res.json();
     // Section « Practice Tests » : fichier facultatif à côté de questions.json
     // Sections facultatives (Practice Tests CISSP, puis banques CCSP), à côté de questions.json
-    for (const f of ["practice.json", "lastmile.json"]) {
+    for (const f of ["practice.json", "lastmile.json", "isc2.json"]) {
       try {
         const r2 = await fetch(this.dataUrl.replace(/[^/]+$/, f), { cache: "no-store" });
         if (r2.ok) raw.push(...await r2.json());

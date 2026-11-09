@@ -1,7 +1,7 @@
 {
- "versionCode": 74,
- "versionName": "9.0",
+ "versionCode": 75,
+ "versionName": "9.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture vocale : l'appli n'impose plus de langue à un moteur comme TTS Server (qui n'annonce que le chinois) ; il lit avec la voix cochée chez lui.",
- "notes": "Speech: the app no longer forces a language on engines like TTS Server; it reads with the voice selected there."
+ "notes_fr": "Nouvel onglet Examen blanc ISC2 : 400 questions originales, 50 par domaine, avec mode examen chronométré par domaine.",
+ "notes": "New ISC2 Mock Exam tab: 400 original questions, 50 per domain, with a timed exam mode per domain."
 }

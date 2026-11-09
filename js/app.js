@@ -12,7 +12,7 @@ const PASS = CFG.PASS_MARK || 70;
 const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 /* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112, Last Mile 401-408).
    Le CCSP (chapitres 201-210 et 301-308, même base Supabase) a son propre site : https://hamzabenazouz.github.io/ccsp/ */
-const SECTIONS = ["guide", "practice", "lastmile", "lmsum", "revision", "book", "improve"];
+const SECTIONS = ["guide", "practice", "lastmile", "isc2", "lmsum", "revision", "book", "improve"];
 /** Chapitres de ce site (les chapitres CCSP 201-399 sont ignorés). */
 const isOwnChapter = id => id <= 200 || id >= 400;
 
@@ -675,7 +675,8 @@ const chById = id => state.chapters.find(c => c.id === id);
 // ---- Sections : « guide » = Study Guide CISSP (chapitres 1-21), « practice » = Official Practice Tests CISSP (101-112),
 // « ccsp-guide » = Study Guide CCSP (201-210), « ccsp-practice » = Official Practice Tests CCSP (301-308).
 // « lastmile » = QCM originaux rédigés d'après « CISSP: The Last Mile » (401-408 = domaines 1-8).
-const secOf = chId => (chId > 400 ? "lastmile" : chId > 300 ? "ccsp-practice" : chId > 200 ? "ccsp-guide" : chId > 100 ? "practice" : "guide");
+// « isc2 » = examen blanc : QCM originaux au style de l'examen ISC2 (501-508 = domaines 1-8).
+const secOf = chId => (chId > 500 ? "isc2" : chId > 400 ? "lastmile" : chId > 300 ? "ccsp-practice" : chId > 200 ? "ccsp-guide" : chId > 100 ? "practice" : "guide");
 const certOf = sec => (String(sec).startsWith("ccsp") ? "ccsp" : "cissp");
 const secCert = () => certOf(state.section);
 const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.section);
@@ -689,6 +690,7 @@ const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
 const domainName = (d, cert = secCert()) => t((cert === "ccsp" ? "ccspDomain." : "domain.") + d);
 /** Étiquette courte d'un chapitre : CH_07, PT_D3 (practice, domaine 3), TEST_2 (test complet) ; préfixe CCSP pour le CCSP. */
 function chLabel(id) {
+  if (id > 500) return `ISC2_D${id - 500}`;
   if (id > 400) return `LM_D${id - 400}`;
   if (id > 200) {
     const c = chById(id), base = id > 300 ? 300 : 200;
@@ -726,7 +728,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.0";
+const APP_VERSION = "9.1";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1615,7 +1617,7 @@ function savedPanel() {
  *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
 function secTabs(sec) {
   const nIn = s => s === "improve" ? mistakes().length : s === "revision" ? REVISION.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
-  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", lmsum: t("lms.tab"), revision: t("rev.tab"), book: t("book.tab"),
+  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tab"), book: t("book.tab"),
     improve: getLang() === "fr" ? "Axes d'amélioration" : "Improvement areas",
   };
   const secs = Object.keys(SEC_NAMES).filter(hasSection);
@@ -1932,7 +1934,7 @@ function renderHome() {
           <span class="bar"><span style="width:${best ?? 0}%"></span></span>
         </button>
         <div class="ch-actions">
-          ${c.domain ? "" : `<button class="btn btn-ghost btn-xs" data-exam-chapter="${c.id}">${esc(t("home.examMode"))}</button>`}
+          ${c.domain && sec !== "isc2" ? "" : `<button class="btn btn-ghost btn-xs" data-exam-chapter="${c.id}">${esc(t("home.examMode"))}</button>`}
           <button class="btn btn-ghost btn-xs" data-start-chapter="${c.id}" data-shuffle="1" title="${esc(t("home.shuffleTitle"))}">${esc(t("home.shuffle"))}</button>
           ${nErr ? `<button class="btn btn-ghost btn-xs" data-mistakes-chapter="${c.id}">${esc(t("home.errors", { n: nErr }))}</button>` : ""}
         </div>
@@ -1960,7 +1962,7 @@ function renderHome() {
       <div class="chapter-grid">${tests.map(card).join("")}</div>
     </section>` : "";
   const tabs = secTabs(sec);
-  const subKey = sec === "lastmile" ? "lm.sub" : cert === "ccsp" ? (kind === "practice" ? "ccsp.subPractice" : "ccsp.sub") : (kind === "practice" ? "home.subPractice" : "home.sub");
+  const subKey = sec === "isc2" ? "isc2.sub" : sec === "lastmile" ? "lm.sub" : cert === "ccsp" ? (kind === "practice" ? "ccsp.subPractice" : "ccsp.sub") : (kind === "practice" ? "home.subPractice" : "home.sub");
 
   const sizes = [25, 50, 100, 125, 150];
   app.innerHTML = `

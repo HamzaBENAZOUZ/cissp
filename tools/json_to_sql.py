@@ -36,7 +36,9 @@ DOMAIN = {1: 1, 2: 1, 3: 1, 4: 1, 5: 2, 6: 3, 7: 3, 8: 3, 9: 3, 10: 3,
           # CCSP Official Practice Tests 3e éd. : 301-306 = domaines 1-6, 307-308 = tests complets
           301: 1, 302: 2, 303: 3, 304: 4, 305: 5, 306: 6,
           # « CISSP: The Last Mile » (QCM originaux) : 401-408 = domaines 1-8
-          401: 1, 402: 2, 403: 3, 404: 4, 405: 5, 406: 6, 407: 7, 408: 8}
+          401: 1, 402: 2, 403: 3, 404: 4, 405: 5, 406: 6, 407: 7, 408: 8,
+          # Examen blanc ISC2 (QCM originaux, style examen) : 501-508 = domaines 1-8
+          501: 1, 502: 2, 503: 3, 504: 4, 505: 5, 506: 6, 507: 7, 508: 8}
 
 
 def b64(obj) -> str:
@@ -140,7 +142,20 @@ def main_lastmile() -> None:
     print(f"{n} questions Last Mile -> seed_lastmile.sql")
 
 
+def main_isc2() -> None:
+    p = OUT / "isc2.json"
+    if not p.exists():
+        return
+    data = json.loads(p.read_text(encoding="utf-8"))
+    n = sum(len(c["questions"]) for c in data)
+    (OUT / "seed_isc2.sql").write_text(
+        build(data, [c["chapter"] for c in data], f"Examen blanc ISC2 ({n} questions originales)",
+              "questions_isc2_importees", " where chapter_id between 501 and 600"), encoding="utf-8")
+    print(f"{n} questions Examen blanc ISC2 -> seed_isc2.sql")
+
+
 if __name__ == "__main__":
+    main_isc2()
     main_lastmile()
     main_ccsp()
     main()

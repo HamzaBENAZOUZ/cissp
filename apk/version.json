@@ -1,7 +1,7 @@
 {
- "versionCode": 68,
- "versionName": "8.4",
+ "versionCode": 69,
+ "versionName": "8.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture vocale : si le moteur choisi (ex. voix Edge via TTS Server) échoue ou s'il n'y a pas de réseau, l'appli bascule automatiquement sur la voix Google hors ligne.",
- "notes": "Speech: if the chosen engine (e.g. Edge voices via TTS Server) fails or there is no network, the app falls back to the offline Google voice."
+ "notes_fr": "Android Auto : même repli automatique sur la voix Google hors ligne si le moteur choisi échoue ou sans réseau.",
+ "notes": "Android Auto: same automatic fallback to the offline Google voice when the chosen engine fails or there is no network."
 }

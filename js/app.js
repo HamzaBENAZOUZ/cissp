@@ -730,7 +730,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.4";
+const APP_VERSION = "9.5";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1282,16 +1282,23 @@ function autoGroups(lang) {
     const pool = qs => (fr ? [...qs.filter(hasFr), ...qs.filter(q => !hasFr(q))] : qs);
     const pick = (qs, n) => { const a = [...qs]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a.slice(0, n); };
     const own = s => state.questions.filter(q => secOf(q.chapter_id) === s);
-    // Mêmes sections de questions que l'appli, dans le même ordre, puis mes erreurs.
+    // Quiz en mode apprentissage, un par domaine (jamais de quiz mélangé) : un dossier par section de l'appli
+    // (champ « folder »), qui contient un quiz par domaine ; puis « Mes erreurs », aussi rangé par domaine.
+    const domOf = q => { const c = chById(q.chapter_id); return c ? c.domain : null; };
+    const PER_DOMAIN = 50;
+    const byDomain = (qs, folder, n) => DOMAIN_IDS.forEach(d => {
+      let dq = qs.filter(q => domOf(q) === d);
+      if (!dq.length) return;
+      // en français : d'abord les questions traduites, complétées si besoin par des questions en anglais
+      const tr = fr ? pick(dq.filter(hasFr), n) : pick(dq, n);
+      const items = [...tr, ...(fr ? pick(dq.filter(q => !hasFr(q)), n - tr.length) : [])].map(quizItem);
+      groups.push({ folder, title: "D" + d + " · " + t("domain." + d, {}, lang),
+        subtitle: items.length + (fr ? " questions, réponse à l'écran" : " questions, answer on screen"), items });
+    });
     for (const [sec, nf, ne] of [["guide", "CISSP", "CISSP"], ["practice", "CISSP Practice", "CISSP Practice"], ["lastmile", "CISSP Last Mile", "CISSP Last Mile"],
-      ["isc2", "Examen blanc ISC2", "ISC2 Mock Exam"]]) {
-      const cs = own(sec);
-      if (cs.length) groups.push({ title: (fr ? "Quiz audio · " + nf : "Audio quiz · " + ne),
-        subtitle: fr ? "40 questions au hasard" : "40 random questions", items: pick(fr ? cs.filter(hasFr).length ? cs.filter(hasFr) : cs : cs, 40).map(quizItem) });
-    }
+      ["isc2", "Examen blanc ISC2", "ISC2 Mock Exam"]]) byDomain(own(sec), (fr ? "Quiz · " + nf : "Quiz · " + ne), PER_DOMAIN);
     const wrong = mistakes();
-    if (wrong.length) groups.push({ title: fr ? "Quiz audio · Mes erreurs" : "Audio quiz · My mistakes",
-      subtitle: Math.min(wrong.length, 60) + " questions", items: pick(pool(wrong), 60).map(quizItem) });
+    if (wrong.length) byDomain(wrong, fr ? "Quiz · Mes erreurs" : "Quiz · My mistakes", 60);
     return groups;
   }
 }

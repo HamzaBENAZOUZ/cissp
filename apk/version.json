@@ -1,7 +1,7 @@
 {
- "versionCode": 78,
- "versionName": "9.4",
+ "versionCode": 79,
+ "versionName": "9.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : mode examen retiré. Les quiz audio reprennent les sections de l'appli (CISSP, Practice, Last Mile, Examen blanc ISC2) et tu peux répondre A B C D sur l'écran de la voiture.",
- "notes": "Android Auto: exam mode removed. Audio quizzes follow the app sections (CISSP, Practice, Last Mile, ISC2 Mock Exam) and you can answer A B C D on the car screen."
+ "notes_fr": "Android Auto : quiz rangés par section puis par domaine (50 questions par domaine), plus de quiz mélangés. Réponse A B C D à l'écran.",
+ "notes": "Android Auto: quizzes grouped by section then by domain (50 questions per domain), no more mixed quizzes. Answer A B C D on screen."
 }

@@ -3,6 +3,8 @@ import { t, getLang, setLang, locale } from "./i18n.js";
 import { offlineEnabled, registerSW, unregisterSW, autonomous, setAutonomous } from "./offline.js";
 import { REVISION } from "./revision.js";
 import { LMSUM } from "./lastmile-summary.js";
+import { LMAUDIO } from "./lastmile-audio.js";
+LMSUM.forEach(r => { if (LMAUDIO[r.id]) r.audio = LMAUDIO[r.id]; });   // volet « Version audio » (texte écrit pour la voix)
 
 /** Vrai dans l'application Android (pont vocal AndroidTTS fourni par l'APK). */
 const IN_APP = !!window.AndroidTTS;
@@ -730,7 +732,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.5";
+const APP_VERSION = "9.6";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1252,8 +1254,10 @@ function autoGroups(lang) {
     const lines = (r, panes, L = lang) => panes.flatMap(p => ["§ " + t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
     const groups = [];
     groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
-      items: LMSUM.map(r => ({ key: "lms-" + r.id + "-" + lang, title: (fr ? "Domaine " : "Domain ") + r.id + " · " + t("domain." + r.id, {}, lang), subtitle: t("lms.tab", {}, lang),
-        lang, parts: lines(r, REV_PANES) })) });
+      // En français, la voiture lit la version audio (écrite pour la synthèse vocale) quand elle existe.
+      items: LMSUM.map(r => { const au = fr && r.audio && r.audio.fr;
+        return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Domaine " : "Domain ") + r.id + " · " + t("domain." + r.id, {}, lang),
+          subtitle: au ? "Version audio détaillée" : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
     groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
       items: REVISION.map(r => ({ key: "rev-" + r.id + "-" + lang, title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),
@@ -1819,7 +1823,7 @@ function revSpeech(r, pane, lang) {
   return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head]);
 }
 function revPaneHtml(r, pane, lang) {
-  if (pane === "sum" || pane === "bsum" || pane === "bess") {
+  if (pane === "sum" || pane === "audio" || pane === "bsum" || pane === "bess") {
     // Lignes « ## » = sous-titre, « - » = puce (regroupées en liste), sinon paragraphe.
     let html = "", list = [];
     const flush = () => { if (list.length) { html += `<ul class="rev-list">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`; list = []; } };
@@ -1839,7 +1843,8 @@ function renderRevision(sec = "revision") {
   const ITEMS = isBook ? [...state.notes.keys()].sort((a, b) => a - b).map(id => ({ id }))
     : isLms ? LMSUM.map(r => ({ ...r, lms: true })) : REVISION;
   const key = id => sec + ":" + id;
-  const paneOf = id => { const p = revOpen.get(key(id)); return PANES.includes(p) ? p : PANES[0]; };
+  const panesOf = r => isLms && r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
+  const paneOf = id => { const P = panesOf(ITEMS.find(x => x.id === id)); const p = revOpen.get(key(id)); return P.includes(p) ? p : P[0]; };
   const card = r => {
     const c = chById(r.id), pane = paneOf(r.id);
     return `
@@ -1849,7 +1854,7 @@ function renderRevision(sec = "revision") {
       <div class="rev-body">
         <div class="rev-tools">
           <div class="seg rev-panes" role="group">
-            ${PANES.map(p => `<button class="seg-btn" data-revpane="${p}" aria-pressed="${p === pane}">${esc(t("rev.pane." + p))}</button>`).join("")}
+            ${panesOf(r).map(p => `<button class="seg-btn" data-revpane="${p}" aria-pressed="${p === pane}">${esc(t("rev.pane." + p))}</button>`).join("")}
           </div>
           <div class="row rev-speak">
             ${`

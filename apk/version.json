@@ -1,7 +1,7 @@
 {
- "versionCode": 79,
- "versionName": "9.5",
+ "versionCode": 80,
+ "versionName": "9.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : quiz rangés par section puis par domaine (50 questions par domaine), plus de quiz mélangés. Réponse A B C D à l'écran.",
- "notes": "Android Auto: quizzes grouped by section then by domain (50 questions per domain), no more mixed quizzes. Answer A B C D on screen."
+ "notes_fr": "Version audio détaillée des 8 domaines (Résumé Last Mile) : texte écrit pour la voix, lue en voiture.",
+ "notes": "Detailed audio version of the 8 domains (French)."
 }

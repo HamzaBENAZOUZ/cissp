@@ -402,7 +402,7 @@ const DICT = {
     "sec.cert": "Certification",
     "rev.tab": "CISSP Review",
     "lms.tab": "Last Mile Summary",
-    "lms.sub": "{n} very detailed sheets, one per domain, following the structure of CISSP: The Last Mile: the complete summary section by section, exam prep and what to memorize. \"Listen\" reads the sheet aloud in English.",
+    "lms.sub": "{n} very detailed sheets, one per domain, following the structure of CISSP: The Last Mile: the complete summary section by section, exam prep and what to memorize. \"Listen\" reads the sheet aloud in English. The \"Audio version\" pane is written for listening (acronyms explained, numbers in words); it is what the car reads.",
     "rev.sub": "{n} study sheets, one per Study Guide chapter: a complete summary, how to prepare for the exam, and what to memorize. \"Listen\" reads the sheet aloud in English.",
     "rev.openAll": "Expand all",
     "rev.closeAll": "Collapse all",

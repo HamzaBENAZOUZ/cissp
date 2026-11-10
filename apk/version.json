@@ -1,7 +1,7 @@
 {
- "versionCode": 80,
- "versionName": "9.6",
+ "versionCode": 81,
+ "versionName": "9.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Version audio détaillée des 8 domaines (Résumé Last Mile) : texte écrit pour la voix, lue en voiture.",
- "notes": "Detailed audio version of the 8 domains (French)."
+ "notes_fr": "Version audio en anglais (8 domaines), relecture complète, sigles lus lettre par lettre (T.C.P).",
+ "notes": "Audio version in English (8 domains), full review, acronyms spelled out letter by letter."
 }

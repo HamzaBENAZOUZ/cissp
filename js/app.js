@@ -252,6 +252,13 @@ function renderPlayer() {
  *  - mode "all"      : la question, ses propositions, la bonne réponse et l'explication.
  */
 /** Assemble des morceaux de texte avec un point entre eux, sauf s'ils finissent déjà par une ponctuation. */
+/* Sigles lus lettre par lettre : « TCP » devient « T.C.P » (sinon certaines voix disent « tcep »).
+   Les sigles qui se prononcent comme un mot restent tels quels. Le texte affiché ne change pas. */
+const ACR_WORDS = new Set(("NAT WEP SAML PASTA STRIDE DREAD VAST TRIKE OCTAVE OWASP SCADA RAID CASB SASE SABSA TOGAF COBIT ITIL COSO NIST FAIR ISACA CERT " +
+  "LAND KRACK SPIT PIN HIPAA SOX COPPA FERPA FISMA ITAR EAR SCAP SHA REST SOAP JSON TOCTOU SAMM BSIMM IDEAL COTS RAD SAST DAST IAST SIEM SOAR " +
+  "CSIRT CIRT SOC SCIM LDAP LDAPS RADIUS TACACS FIDO XACML PAM ABAC RBAC MAC DAC ISO MITRE ATTACK POP IMAP ARP IKE DNSSEC PAP CHAP EAP PEAP " +
+  "JPEG ASCII SIP NAC WAF VXLAN VLAN LAN WAN TKIP IMSI SIM MIME IDEA CISO PUF SYN ACK NATO UNIX").split(" "));
+function spellAcr(x) { return typeof x === "string" ? x.replace(/\b[A-Z]{2,7}\b/g, w => ACR_WORDS.has(w) ? w : w.split("").join(".")) : x; }
 const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).filter(Boolean)
   .map(x => /[.?!:;…]$/.test(x) ? x : x + ".").join(" ");
 /* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
@@ -357,7 +364,7 @@ function speakUnits(key, units, lang, btn, onEnd) {
   if (!canSpeak) return;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  units = units.filter(u => u.text || u.pause);
+  units = units.filter(u => u.text || u.pause).map(u => u.text ? { ...u, text: spellAcr(u.text) } : u);
   while (units.length && units[units.length - 1].pause) units.pop();
   if (!units.some(u => u.text)) units = [];
   if (!units.length) { if (onEnd) onEnd(); return; }
@@ -732,7 +739,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.6";
+const APP_VERSION = "9.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1241,6 +1248,8 @@ function exportAuto() {
     // les deux langues sont préparées : la voiture peut passer du français à l'anglais (bouton 🌐) sans le téléphone
     const langs = {};
     for (const lang of ["fr", "en"]) langs[lang] = { groups: autoGroups(lang) };
+    // sigles lus lettre par lettre aussi en voiture (les marqueurs « ##PAUSE## » ne sont pas touchés)
+    for (const L of Object.values(langs)) for (const g of L.groups) for (const it of g.items) if (it.parts) it.parts = it.parts.map(x => /^##/.test(x) ? x : spellAcr(x));
     nativeTTS.saveAuto(JSON.stringify({ v: 3, lang: getLang(), rate: ttsRate, pauseMs: 6000,
       voice: { fr: voicePref("fr"), en: voicePref("en") }, langs }));
   } catch (e) { console.error("exportAuto", e); }
@@ -1254,10 +1263,10 @@ function autoGroups(lang) {
     const lines = (r, panes, L = lang) => panes.flatMap(p => ["§ " + t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
     const groups = [];
     groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
-      // En français, la voiture lit la version audio (écrite pour la synthèse vocale) quand elle existe.
-      items: LMSUM.map(r => { const au = fr && r.audio && r.audio.fr;
+      // La voiture lit la version audio (écrite pour la synthèse vocale) quand elle existe.
+      items: LMSUM.map(r => { const au = r.audio && r.audio[lang];
         return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Domaine " : "Domain ") + r.id + " · " + t("domain." + r.id, {}, lang),
-          subtitle: au ? "Version audio détaillée" : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
+          subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
     groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
       items: REVISION.map(r => ({ key: "rev-" + r.id + "-" + lang, title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),

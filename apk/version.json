@@ -1,7 +1,7 @@
 {
- "versionCode": 82,
- "versionName": "9.8",
+ "versionCode": 83,
+ "versionName": "9.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Version audio pour les 21 chapitres de la Révision CISSP (en français), lisible en voiture. Les mots en majuscules comme PLUS ou MIEUX ne sont plus épelés.",
- "notes": "Audio version for the 21 CISSP Review chapters (French for now), car-ready. Capitalised words like MOST or BEST are no longer spelled out."
+ "notes_fr": "Version audio en anglais pour les 21 chapitres de la Révision CISSP.",
+ "notes": "English audio version for the 21 CISSP Review chapters."
 }

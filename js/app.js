@@ -2,6 +2,8 @@ import { SupabaseStore, LocalStore, latestByQuestion } from "./store.js";
 import { t, getLang, setLang, locale } from "./i18n.js";
 import { offlineEnabled, registerSW, unregisterSW, autonomous, setAutonomous } from "./offline.js";
 import { REVISION } from "./revision.js";
+import { REVAUDIO } from "./revision-audio.js";
+REVISION.forEach(r => { if (REVAUDIO[r.id]) r.audio = REVAUDIO[r.id]; });   // volet « Version audio » des chapitres
 import { LMSUM } from "./lastmile-summary.js";
 import { LMAUDIO } from "./lastmile-audio.js";
 LMSUM.forEach(r => { if (LMAUDIO[r.id]) r.audio = LMAUDIO[r.id]; });   // volet « Version audio » (texte écrit pour la voix)
@@ -257,7 +259,7 @@ function renderPlayer() {
 const ACR_WORDS = new Set(("NAT WEP SAML PASTA STRIDE DREAD VAST TRIKE OCTAVE OWASP SCADA RAID CASB SASE SABSA TOGAF COBIT ITIL COSO NIST FAIR ISACA CERT " +
   "LAND KRACK SPIT PIN HIPAA SOX COPPA FERPA FISMA ITAR EAR SCAP SHA REST SOAP JSON TOCTOU SAMM BSIMM IDEAL COTS RAD SAST DAST IAST SIEM SOAR " +
   "CSIRT CIRT SOC SCIM LDAP LDAPS RADIUS TACACS FIDO XACML PAM ABAC RBAC MAC DAC ISO MITRE ATTACK POP IMAP ARP IKE DNSSEC PAP CHAP EAP PEAP " +
-  "JPEG ASCII SIP NAC WAF VXLAN VLAN LAN WAN TKIP IMSI SIM MIME IDEA CISO PUF SYN ACK NATO UNIX").split(" "));
+  "JPEG ASCII SIP NAC WAF VXLAN VLAN LAN WAN TKIP IMSI SIM MIME IDEA CISO PUF SYN ACK NATO UNIX BEST MOST PLUS MIEUX FIRST PRIMARY MAIN PREMIER PREMI SURTOUT MOINS VRAIE FAUSSE TRUE FALSE NOT PAS SAUF LEAST FEWEST HIGHEST MAINLY AVOIDED BEFORE MUST AVANT MINIMUM UPDATE SELECT WHERE BEGIN COMMIT FORTE VITER TEMPEST LEAP ACID COPE OVAL FAST SENTRY CAST POODLE BEAST GHOST SOCKS OASIS OAKLEY WORM PATRIOT CARROT HOSTS LAPS BIOS DARPA FEMA CNIL OSINT INERGEN SONET").split(" "));
 function spellAcr(x) { return typeof x === "string" ? x.replace(/\b[A-Z]{2,7}\b/g, w => ACR_WORDS.has(w) ? w : w.split("").join(".")) : x; }
 const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).filter(Boolean)
   .map(x => /[.?!:;…]$/.test(x) ? x : x + ".").join(" ");
@@ -739,7 +741,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.7";
+const APP_VERSION = "9.8";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1269,8 +1271,9 @@ function autoGroups(lang) {
           subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
     groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
-      items: REVISION.map(r => ({ key: "rev-" + r.id + "-" + lang, title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id), subtitle: t("rev.tab", {}, lang),
-        lang, parts: lines(r, REV_PANES) })) });
+      items: REVISION.map(r => { const au = r.audio && r.audio[lang];
+        return { key: "rev-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id),
+          subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("rev.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     if (state.notes && state.notes.size) {
       const ids = [...state.notes.keys()].sort((a, b) => a - b);
       groups.push({ title: t("book.tab", {}, lang), subtitle: ids.length + (fr ? " chapitres" : " chapters"),
@@ -1852,7 +1855,7 @@ function renderRevision(sec = "revision") {
   const ITEMS = isBook ? [...state.notes.keys()].sort((a, b) => a - b).map(id => ({ id }))
     : isLms ? LMSUM.map(r => ({ ...r, lms: true })) : REVISION;
   const key = id => sec + ":" + id;
-  const panesOf = r => isLms && r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
+  const panesOf = r => !isBook && r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
   const paneOf = id => { const P = panesOf(ITEMS.find(x => x.id === id)); const p = revOpen.get(key(id)); return P.includes(p) ? p : P[0]; };
   const card = r => {
     const c = chById(r.id), pane = paneOf(r.id);

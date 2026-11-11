@@ -741,7 +741,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "9.9";
+const APP_VERSION = "10.0";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1023,7 +1023,11 @@ function tvSync() {
     multi: !!q.multi, picks, checked, correct: checked ? q.correct : [], explanation: checked ? txt.explanation : "",
     ok: checked && sameSet(picks, q.correct),
   });
+  // télé : chaque nouvelle question est lue toute seule (question + propositions), si le son est activé
+  const key = z.label() + ":" + z.questions.length + ":" + z.i + ":" + showLang;
+  if (!checked && tvAutoQ !== key && autoRead() && !speedActive(z)) { tvAutoQ = key; const i = z.i; setTimeout(() => { if (state.quiz === z && z.i === i && state.view === "quiz" && !z.checked[i]) tvSpeak("question"); }, 400); }
 }
+let tvAutoQ = null;
 /** Réponse donnée sur la télé (télécommande ou voix) : appliquée au quiz du téléphone comme un toucher. */
 function tvRemoteAnswer(m) {
   const z = state.quiz; if (state.view !== "quiz" || !z || z.i + 1 !== m.n || z.checked[z.i]) return;

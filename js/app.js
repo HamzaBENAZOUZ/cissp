@@ -1189,7 +1189,7 @@ function tvAnswer(msg) {
   tv.link.send({ ...msg, n: m.n });
 }
 if (IS_TV) document.addEventListener("keydown", e => {
-  const m = tvLast; if (!m || m.t !== "q" || m.checked) return;
+  const m = tvLast; if (!m || m.t !== "q" || m.checked || e.repeat) return;   // touche maintenue : pas de choix répétés
   const opts = [...app.querySelectorAll(".tv-quiz .opt[data-letter]")]; if (!opts.length) return;
   const cur = opts.indexOf(document.activeElement);
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {

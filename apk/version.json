@@ -1,7 +1,7 @@
 {
- "versionCode": 84,
- "versionName": "10.0",
+ "versionCode": 85,
+ "versionName": "10.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : chaque nouvelle question est lue toute seule (question et propositions) quand le son est activé.",
- "notes": "TV: each new question is read automatically (question and options) when sound is on."
+ "notes_fr": "Télé : lecture plus fiable (plus de relance au bout de 2,5 s qui coupait la question ou la correction, demandes de lecture en retard ignorées).",
+ "notes": "TV: more reliable reading (no more 2.5 s restart that cut the question or explanation, late read requests ignored)."
 }

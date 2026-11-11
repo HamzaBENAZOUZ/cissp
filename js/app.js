@@ -407,7 +407,10 @@ function playFrom(from) {
       go();
       // Le moteur vocal d'Android ne démarre parfois pas (souvent la toute première lecture, moteur endormi) :
       // si rien n'a commencé au bout de 2,5 s, on relance une fois.
-      setTimeout(() => { if (!heard && alive() && !P.paused && !P.retried) { P.retried = true; go(); } }, 2500);
+      // (Depuis la version 70, l'appli a son propre chien de garde de 7 s qui reprend avec Google : pas de relance ici,
+      // sinon une voix lente à démarrer, comme sur la télé, repartait au début au bout de 2,5 s.)
+      const native7s = typeof nativeTTS.appVersion === "function" && nativeTTS.appVersion() >= 70;
+      if (!native7s) setTimeout(() => { if (!heard && alive() && !P.paused && !P.retried) { P.retried = true; go(); } }, 2500);
     } else {   // appli plus ancienne : une phrase après l'autre
       let i = 0;
       const next = () => {
@@ -741,7 +744,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.0";
+const APP_VERSION = "10.1";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1043,7 +1046,7 @@ function tvRemoteAnswer(m) {
   if (!q.multi && z.feedback && !speedActive(z) && !z.checked[z.i]) check();   // (en Speed, toggle valide déjà)
 }
 /** Lecture sur la télé à la place du téléphone (« question », « all » ou « answer »). */
-function tvSpeak(mode) { if (tv && tv.ok) tv.link.send({ t: "speak", mode }); }
+function tvSpeak(mode) { if (tv && tv.ok) tv.link.send({ t: "speak", mode, n: state.quiz ? state.quiz.i + 1 : 0 }); }
 
 // ---- côté télé
 let tvLast = null;
@@ -1079,6 +1082,8 @@ function renderTv() {
         if (!(tvLast && tvLast.t === "sheet" && tvLast.key === m.key)) stopSpeak();
         tvLast = m; tvRender(); return;
       }
+      // une demande de lecture qui vise une autre question que celle affichée (message en retard) est ignorée
+      if (m.t === "speak" && tvLast && tvLast.t === "q" && m.n && m.mode !== "sheet" && m.n !== tvLast.n) return;
       if (m.t === "speak" && tvLast && (tvLast.t === "q" || tvLast.t === "sheet")) tvRead(m.mode);
     });
     if (!link) return errorPanel(t("err.title"), "Supabase", "");

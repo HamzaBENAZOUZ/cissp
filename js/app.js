@@ -609,7 +609,7 @@ function speedStep() {
     sp.startCount = startCount;
     if (tv && tv.ok) {   // télé : c'est elle qui lit, et elle prévient quand elle a fini (repli : durée estimée)
       tvDoneCb = m => { if (m.mode === "speedq" && m.n === i + 1) startCount(); };
-      tvSpeak("speedq"); setTimeout(startCount, 2 * tvReadMs(box) + 8000);
+      tvSpeak("speedq"); tvAwait(i + 1, 2 * tvReadMs(box) + 15000, startCount);
     } else if (canSpeak && box) {
       readTwice("speed:" + q.id + ":" + i, () => !alive() || z.sp !== sp || sp.phase !== "reading" || z.checked[i] ? "abort"
         : sp.touched || z.picks[i].length ? "done" : true, startCount);
@@ -635,6 +635,18 @@ function readTwice(key, cont, onDone) {
   speakUnits(key, speechUnits(parts, lang), lang, btn, () => { if (cont() !== "abort") onDone(); });
 }
 let tvDoneCb = null;   // téléphone : fin de lecture annoncée par la télé (mode Speed)
+/* Téléphone, mode Speed : on attend la fin annoncée par la télé. Le délai de secours (si la télé ne répond plus) est
+   repoussé tant que la télé signale qu'elle lit encore (message « busy »), pour ne jamais couper une lecture lente. */
+let tvWait = null;
+function tvAwait(n, ms, fn) {
+  if (tvWait) clearTimeout(tvWait.t);
+  const w = tvWait = { n, fn, t: 0 };
+  w.t = setTimeout(() => { if (tvWait === w) tvWait = null; fn(); }, ms);
+}
+function tvBusy(n) {
+  const w = tvWait; if (!w || w.n !== n) return;
+  clearTimeout(w.t); w.t = setTimeout(() => { if (tvWait === w) tvWait = null; w.fn(); }, 6000);
+}
 /** Temps écoulé : bonne réponse affichée et lue, question comptée fausse. */
 function speedTimeout() {
   const z = state.quiz; if (!z || z.checked[z.i]) return;
@@ -666,7 +678,7 @@ function speedAfterCheck() {
   const box = app.querySelector(".question-panel"), q = z.questions[i];
   if (tv && tv.ok) {
     tvDoneCb = m => { if (m.mode === "answer" && m.n === i + 1) goNext(); };
-    tvSpeak("answer"); setTimeout(goNext, tvReadMs(box && box.querySelector(".explain")) + 8000);
+    tvSpeak("answer"); tvAwait(i + 1, tvReadMs(box) + 12000, goNext);
   }
   else if (canSpeak && box) {
     const lang = box.lang || getLang();
@@ -744,7 +756,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.1";
+const APP_VERSION = "10.2";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -965,7 +977,8 @@ function tvConnect(code, auto = false) {
   const fr = getLang() === "fr";
   const link = tvChannel(code, m => {
     if (!tv || tv.link !== link) return;
-    if (m.t === "done") { if (tvDoneCb) tvDoneCb(m); return; }
+    if (m.t === "busy") { tvBusy(m.n); return; }
+    if (m.t === "done") { if (tvWait && tvWait.n === m.n) { clearTimeout(tvWait.t); tvWait = null; } if (tvDoneCb) tvDoneCb(m); return; }
     if (m.t === "pick" || m.t === "check" || m.t === "listening") { tvRemoteAnswer(m); return; }
     if (m.t === "here") {   // la télé répond (ou vient de s'ouvrir)
       const first = !tv.ok; tv.ok = true; tvSave(code); renderTvBtn();
@@ -995,7 +1008,7 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 function tvDisconnect(silent) {
   if (!tv) return;
   try { tv.link.send({ t: "bye" }); } catch { /* ignore */ }
-  const l = tv.link; tv = null; setTimeout(() => l.close(), 500);
+  const l = tv.link; tv = null; setTimeout(() => l.close(), 500); tvHoldScreen(false);
   renderTvBtn();
   if (!silent) toast(getLang() === "fr" ? "📺 Télé déconnectée" : "📺 TV disconnected", "info");
 }
@@ -1003,8 +1016,14 @@ function tvDisconnect(silent) {
 let tvRev = null;   // fiche ouverte sur le téléphone : { sec, r, pane, lang }
 /** Fiche (Révision, Résumé Last Mile, Livre) ouverte ou changée sur le téléphone : on l'affiche aussi sur la télé. */
 function tvSheet(sec, r, pane, lang) { tvRev = r ? { sec, r, pane, lang } : null; tvSync(); }
+let tvHold = false;
+function tvHoldScreen(on) {
+  if (on === tvHold || !nativeTTS || typeof nativeTTS.keepScreen !== "function") return;
+  tvHold = on; try { nativeTTS.keepScreen(on); } catch { /* ignore */ }
+}
 function tvSync() {
-  if (!tv || !tv.ok) return;
+  if (!tv || !tv.ok) { tvHoldScreen(false); return; }
+  tvHoldScreen(state.view === "quiz");   // téléphone en veille = quiz figé et télé muette : on garde l'écran allumé
   const z = state.quiz;
   if (state.view === "home" && tvRev && tvRev.sec === state.section) {
     const { sec, r, pane, lang } = tvRev, c = chById(r.id);
@@ -1248,6 +1267,8 @@ function tvRead(mode) {
   speakUnits("tv:" + n + ":" + mode, speechUnits(quizParts({ correct: m.correct }, box, m.lang, mode), m.lang), m.lang, btn, done);
 }
 let tvReadTok = 0;
+// télé : tant qu'elle lit une question, elle le signale au téléphone toutes les 2 s (il attend la fin avant de continuer)
+if (IS_TV) setInterval(() => { if (tv && player && tvLast && tvLast.t === "q") tv.link.send({ t: "busy", n: tvLast.n }); }, 2000);
 
 // ------------------------------------------------------------------ Android Auto
 /* L'appli prépare le contenu à écouter en voiture (fiches et quiz audio) dans la langue de l'appli ;

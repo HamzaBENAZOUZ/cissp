@@ -1,7 +1,7 @@
 {
- "versionCode": 85,
- "versionName": "10.1",
+ "versionCode": 86,
+ "versionName": "10.2",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : lecture plus fiable (plus de relance au bout de 2,5 s qui coupait la question ou la correction, demandes de lecture en retard ignorées).",
- "notes": "TV: more reliable reading (no more 2.5 s restart that cut the question or explanation, late read requests ignored)."
+ "notes_fr": "Télé : le téléphone reste allumé pendant le quiz (la mise en veille figeait tout), et en mode Speed il attend que la télé ait fini de lire la question ou la correction avant de continuer.",
+ "notes": "TV: the phone stays awake during the quiz (sleep froze everything), and in Speed mode it waits for the TV to finish reading before moving on."
 }

@@ -756,7 +756,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.2";
+const APP_VERSION = "10.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1199,8 +1199,25 @@ if (IS_TV) document.addEventListener("keydown", e => {
     nx.focus({ preventScroll: false }); if (nx.dataset.letter) tvFocusL = nx.dataset.letter;
     e.preventDefault(); return;
   }
-  if ((e.key === "Enter" || e.key === " ") && cur >= 0) { e.preventDefault(); tvFocusL = opts[cur].dataset.letter; tvAnswer({ t: "pick", L: tvFocusL }); return; }
-  if (/^[1-6]$/.test(e.key) && opts[+e.key - 1]) { e.preventDefault(); tvAnswer({ t: "pick", L: opts[+e.key - 1].dataset.letter }); }
+  // touche OK de la télécommande : selon les télés, « Enter », « Select » ou le code 23 (DPAD_CENTER) sans nom de touche
+  const ok = ["Enter", " ", "Select", "NumpadEnter"].includes(e.key) || [13, 23, 66].includes(e.keyCode);
+  if (ok && !["tv-check", "tv-mic"].includes(document.activeElement && document.activeElement.id)) {
+    // focus perdu (écran redessiné pendant la lecture) : on prend la dernière proposition choisie, sinon la première
+    const o = cur >= 0 ? opts[cur] : (tvFocusL && opts.find(x => x.dataset.letter === tvFocusL)) || opts[0];
+    e.preventDefault(); tvFocusL = o.dataset.letter; o.focus({ preventScroll: true }); tvPick(tvFocusL); return;
+  }
+  if (/^[1-6]$/.test(e.key) && opts[+e.key - 1]) { e.preventDefault(); tvPick(opts[+e.key - 1].dataset.letter); }
+});
+/** Choix envoyé au téléphone ; un même choix reçu deux fois de suite (touche + clic) n'est envoyé qu'une fois. */
+let tvPickLast = { L: "", at: 0 };
+function tvPick(L) {
+  const now = Date.now(); if (tvPickLast.L === L && now - tvPickLast.at < 600) return;
+  tvPickLast = { L, at: now }; tvAnswer({ t: "pick", L });
+}
+// clic sur une proposition (certaines télécommandes envoient un clic au lieu de la touche OK)
+if (IS_TV) document.addEventListener("click", e => {
+  const o = e.target.closest && e.target.closest(".tv-quiz .opt[data-letter]"); if (!o) return;
+  tvFocusL = o.dataset.letter; tvPick(tvFocusL);
 });
 /** Lettres et « valider » reconnus dans ce qui a été dit (« réponse C », « B », « la deuxième », « A et C »…). */
 function tvParseVoice(list, nOpt) {

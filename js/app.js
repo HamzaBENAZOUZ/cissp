@@ -756,7 +756,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.3";
+const APP_VERSION = "10.4";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1204,12 +1204,12 @@ if (IS_TV) document.addEventListener("keydown", e => {
   if (ok && !["tv-check", "tv-mic"].includes(document.activeElement && document.activeElement.id)) {
     // focus perdu (écran redessiné pendant la lecture) : on prend la dernière proposition choisie, sinon la première
     const o = cur >= 0 ? opts[cur] : (tvFocusL && opts.find(x => x.dataset.letter === tvFocusL)) || opts[0];
-    e.preventDefault(); tvFocusL = o.dataset.letter; o.focus({ preventScroll: true }); tvPick(tvFocusL); return;
+    e.preventDefault(); tvOkAt = Date.now(); tvFocusL = o.dataset.letter; o.focus({ preventScroll: true }); tvPick(tvFocusL); return;
   }
   if (/^[1-6]$/.test(e.key) && opts[+e.key - 1]) { e.preventDefault(); tvPick(opts[+e.key - 1].dataset.letter); }
 });
 /** Choix envoyé au téléphone ; un même choix reçu deux fois de suite (touche + clic) n'est envoyé qu'une fois. */
-let tvPickLast = { L: "", at: 0 };
+let tvPickLast = { L: "", at: 0 }, tvOkAt = 0;
 function tvPick(L) {
   const now = Date.now(); if (tvPickLast.L === L && now - tvPickLast.at < 600) return;
   tvPickLast = { L, at: now }; tvAnswer({ t: "pick", L });
@@ -1217,6 +1217,8 @@ function tvPick(L) {
 // clic sur une proposition (certaines télécommandes envoient un clic au lieu de la touche OK)
 if (IS_TV) document.addEventListener("click", e => {
   const o = e.target.closest && e.target.closest(".tv-quiz .opt[data-letter]"); if (!o) return;
+  // la touche OK a déjà choisi : le clic que la télé fabrique au relâchement (parfois bien après) ne doit pas décocher
+  if (Date.now() - tvOkAt < 2000) return;
   tvFocusL = o.dataset.letter; tvPick(tvFocusL);
 });
 /** Lettres et « valider » reconnus dans ce qui a été dit (« réponse C », « B », « la deuxième », « A et C »…). */

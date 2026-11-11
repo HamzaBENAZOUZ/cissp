@@ -1,7 +1,7 @@
 {
- "versionCode": 87,
- "versionName": "10.3",
+ "versionCode": 88,
+ "versionName": "10.4",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : la touche OK de la télécommande choisit toujours une réponse, même si l'écran a été redessiné pendant la lecture.",
- "notes": "TV: the remote's OK key always picks an answer, even if the screen was redrawn during reading."
+ "notes_fr": "Télé : questions à plusieurs réponses, une réponse choisie avec la télécommande ne se décoche plus toute seule.",
+ "notes": "TV: multiple-answer questions, an answer picked with the remote no longer unticks itself."
 }

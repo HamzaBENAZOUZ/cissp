@@ -16,7 +16,7 @@ const PASS = CFG.PASS_MARK || 70;
 const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 /* Banques de questions (onglets) : CISSP (Study Guide 1-21, Practice Tests 101-112, Last Mile 401-408).
    Le CCSP (chapitres 201-210 et 301-308, même base Supabase) a son propre site : https://hamzabenazouz.github.io/ccsp/ */
-const SECTIONS = ["guide", "practice", "lastmile", "isc2", "lmsum", "revision", "book", "improve"];
+const SECTIONS = ["guide", "practice", "lastmile", "isc2", "lmsum", "revision", "book", "improve", "search"];
 /** Chapitres de ce site (les chapitres CCSP 201-399 sont ignorés). */
 const isOwnChapter = id => id <= 200 || id >= 400;
 
@@ -709,7 +709,7 @@ const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.secti
 const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === state.section);
 // « revision » : fiches de révision (js/revision.js), sans questions ; visible dès que le CISSP est chargé.
 // « book » : sections Summary / Study Essentials du livre (table cissp_book_notes), visible si la table est remplie.
-const hasSection = sec => sec === "improve" ? state.questions.length > 0 : (sec === "revision" || sec === "lmsum") ? state.chapters.some(c => c.id <= 100)
+const hasSection = sec => (sec === "improve" || sec === "search") ? state.questions.length > 0 : (sec === "revision" || sec === "lmsum") ? state.chapters.some(c => c.id <= 100)
   : sec === "book" ? !!(state.notes && state.notes.size) : state.chapters.some(c => secOf(c.id) === sec);
 const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
 /** Nom d'un domaine, selon la certification (8 domaines CISSP, 6 domaines CCSP). */
@@ -727,6 +727,23 @@ function chLabel(id) {
   const c = chById(id);
   return c && c.domain ? `PT_D${c.domain}` : `TEST_${id - 108}`;
 }
+/** Identifiant unique et stable d'une question, calculé depuis (chapitre, numéro) : jamais stocké, donc identique
+ *  sur le site, dans l'APK, hors ligne et dans toutes les copies de la base.
+ *  BK_xxxx = question issue d'un livre : 0001-0420 Study Guide (CH_01-21), 1001-2560 Official Practice Tests (101-112),
+ *            3001-3200 CCSP Study Guide (201-210), 4001-5040 CCSP Practice Tests (301-308).
+ *  CL_xxxxx = question rédigée par Claude : 1xxxx Last Mile (401-408), 2xxxx Examen blanc ISC2 (501-508). */
+function qRef(q) {
+  const c = q.chapter_id, n = q.number;
+  const bk = v => "BK_" + String(v).padStart(4, "0"), cl = v => "CL_" + String(v).padStart(5, "0");
+  if (c > 500) return cl(20000 + (c - 501) * 100 + n);
+  if (c > 400) return cl(10000 + (c - 401) * 100 + n);
+  if (c > 300) return bk(4000 + (c - 301) * 130 + n);
+  if (c > 200) return bk(3000 + (c - 201) * 20 + n);
+  if (c > 100) return bk(1000 + (c - 101) * 130 + n);
+  return bk((c - 1) * 20 + n);
+}
+const qSrc = q => (q.chapter_id > 400 ? "CL" : "BK");
+const refTag = q => `<span class="qref mono" title="${esc(getLang() === "fr" ? (qSrc(q) === "BK" ? "Identifiant de la question (issue du livre)" : "Identifiant de la question (rédigée par Claude)") : (qSrc(q) === "BK" ? "Question ID (from the book)" : "Question ID (written by Claude)"))}">${qRef(q)}</span>`;
 function setSection(sec) {
   if (!hasSection(sec)) sec = certOf(sec) === "ccsp" ? (hasSection("ccsp-guide") ? "ccsp-guide" : "ccsp-practice") : "guide";
   state.section = sec;
@@ -756,7 +773,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.5";
+const APP_VERSION = "10.6";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1339,7 +1356,7 @@ function autoGroups(lang) {
       const opts = (x.options || []).map((o, i) => String.fromCharCode(65 + i) + (f ? " : " : ": ") + o);
       const ok = q.correct.map(L => L + (f ? " : " : ": ") + ((x.options || [])[L.charCodeAt(0) - 65] || ""));
       const head = f ? (q.correct.length > 1 ? "Bonnes réponses" : "Bonne réponse") : (q.correct.length > 1 ? "Correct answers" : "Correct answer");
-      return { key: "q-" + q.id + "-" + Lq, title: "Question " + (k + 1), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
+      return { key: "q-" + q.id + "-" + Lq, title: "Question " + (k + 1) + " · " + qRef(q), subtitle: chTitle(q.chapter_id) || "", lang: Lq,
         parts: [x.scenario || "", x.question || "", ...opts, AUTO_PAUSE, head + ".", ...ok, x.explanation || ""],
         // réponse possible à l'écran de la voiture (boutons A-D) pendant la lecture et le temps de réflexion
         ...(q.correct.length === 1 && (x.options || []).length <= 4 ? { quiz: { a: q.correct[0], n: (x.options || []).length } } : {}) };
@@ -1693,9 +1710,10 @@ function savedPanel() {
 /** Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / Révision CISSP
  *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
 function secTabs(sec) {
-  const nIn = s => s === "improve" ? mistakes().length : s === "revision" ? REVISION.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
+  const nIn = s => s === "search" ? state.questions.length : s === "improve" ? mistakes().length : s === "revision" ? REVISION.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
   const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tab"), book: t("book.tab"),
     improve: getLang() === "fr" ? "Axes d'amélioration" : "Improvement areas",
+    search: getLang() === "fr" ? "🔎 Rechercher" : "🔎 Search",
   };
   const secs = Object.keys(SEC_NAMES).filter(hasSection);
   return secs.length > 1 ? `
@@ -1781,7 +1799,7 @@ function renderImprove() {
         <span class="muted small">${esc(chTitle(c))} · ${esc(IMP_PANE[x.pane][lang])}</span><br><span class="imp-read-txt">${esc(impLineText(x, lang))}</span></li>`;
     }).join("");
     return `<details class="imp-q" data-impq="${q.id}">
-      <summary><span class="mono muted small">${esc(chLabel(q.chapter_id))}</span> ${esc(String(tx.question).slice(0, 160))}${String(tx.question).length > 160 ? "…" : ""}</summary>
+      <summary><span class="mono muted small">${esc(chLabel(q.chapter_id))}</span> ${refTag(q)} ${esc(String(tx.question).slice(0, 160))}${String(tx.question).length > 160 ? "…" : ""}</summary>
       <div class="imp-body">
         ${impCanSpeak() ? `<div class="row"><button class="btn btn-ghost btn-xs btn-speak" data-imp-speak="${q.id}" lang="${lang}">🔊 ${fr ? "Lire" : "Listen"}</button></div>` : ""}
         ${tx.scenario ? `<p class="muted imp-scen">${esc(tx.scenario)}</p>` : ""}
@@ -1981,11 +1999,175 @@ function renderRevision(sec = "revision") {
   mountOffline();
 }
 
+/* ---- Onglet « Rechercher » : retrouver des questions par identifiant (BK_0123, CL_20045, plusieurs à la fois),
+   par mots (anglais et français : question, propositions, explication, mise en situation) ou par chapitre (CH_07, PT_D3…),
+   filtrer par banque / domaine / statut, cocher une ou plusieurs questions et y répondre (quiz avec correction). */
+const srch = { q: "", src: "", dom: "", st: "", sel: new Set(), limit: 60, mix: false };
+const normTxt = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const srchHay = new Map();
+function hayOf(q) {
+  let h = srchHay.get(q.id);
+  if (!h) {
+    h = normTxt([qRef(q), chLabel(q.chapter_id), q.scenario, q.question, ...(q.options || []), q.explanation,
+      q.scenario_fr, q.question_fr, ...(q.options_fr || []), q.explanation_fr].filter(Boolean).join(" \n "));
+    srchHay.set(q.id, h);
+  }
+  return h;
+}
+const REF_RE = /^(bk|cl)[_\-\s]?(\d{1,5})$/;
+function searchResults() {
+  const raw = normTxt(srch.q).trim();
+  // identifiants : « BK_0012 », « bk12 », « CL-20001 » ; plusieurs séparés par des virgules / espaces = l'un OU l'autre
+  const toks = raw.split(/[\s,;]+/).filter(Boolean);
+  const refs = toks.length && toks.every(x => REF_RE.test(x)) ? toks.map(x => { const m = x.match(REF_RE); return [m[1].toUpperCase(), m[2]]; }) : null;
+  const words = refs ? [] : (raw.match(/"[^"]+"|\S+/g) || []).map(w => w.replace(/"/g, "")).filter(Boolean);
+  const latestOk = q => { const a = state.latest.get(q.id); return a ? a.is_correct : null; };
+  return state.questions.filter(q => {
+    if (srch.src === "BK" || srch.src === "CL") { if (qSrc(q) !== srch.src) return false; }
+    else if (srch.src && secOf(q.chapter_id) !== srch.src) return false;
+    if (srch.dom) { const c = chById(q.chapter_id); if (!c || String(c.domain) !== srch.dom) return false; }
+    if (srch.st === "new" && state.latest.has(q.id)) return false;
+    if (srch.st === "ko" && latestOk(q) !== false) return false;
+    if (srch.st === "ok" && latestOk(q) !== true) return false;
+    if (srch.st === "flag" && !isFlagged(q)) return false;
+    if (refs) {
+      const r = qRef(q);
+      return refs.some(([p, d]) => r.startsWith(p + "_") && +r.slice(3) === +d);
+    }
+    const h = hayOf(q);
+    return words.every(w => h.includes(w));
+  });
+}
+function renderSearch() {
+  stopTimer();
+  state.view = "home";
+  const fr = getLang() === "fr";
+  const L = (a, b) => (fr ? a : b);
+  const srcs = ["guide", "practice", "lastmile", "isc2"].filter(hasSection);
+  const SRC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab") };
+  const opt = (v, txt, cur) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(txt)}</option>`;
+  app.innerHTML = `
+  <div id="offline-slot"></div>
+  <section class="hero">
+    <h1>${L("Rechercher des questions", "Search questions")}</h1>
+    ${secTabs("search")}
+    <p class="muted">${esc(L(
+      "Chaque question a un identifiant unique : BK_xxxx = issue d'un livre, CL_xxxxx = rédigée par Claude. Cherche par identifiant (plusieurs séparés par des virgules), par mots (anglais ou français) ou par chapitre (CH_07, PT_D3, LM_D2…), coche les questions puis réponds-y.",
+      "Every question has a unique ID: BK_xxxx = from a book, CL_xxxxx = written by Claude. Search by ID (several separated by commas), by words (English or French) or by chapter (CH_07, PT_D3, LM_D2…), tick the questions, then answer them."))}</p>
+  </section>
+  <section class="panel srch-panel">
+    <div class="srch-bar">
+      <input type="search" id="srch-q" class="srch-input" value="${esc(srch.q)}" autocomplete="off" spellcheck="false"
+        placeholder="${esc(L("BK_0042, CL_20017 ou mots-clés : firewall, « risque résiduel »…", "BK_0042, CL_20017 or keywords: firewall, \"residual risk\"…"))}" aria-label="${esc(L("Rechercher", "Search"))}">
+    </div>
+    <div class="srch-filters">
+      <select id="srch-src" aria-label="${esc(L("Banque", "Bank"))}">
+        ${opt("", L("Toutes les banques", "All banks"), srch.src)}
+        ${opt("BK", L("Livres (BK_)", "Books (BK_)"), srch.src)}
+        ${opt("CL", L("Rédigées par Claude (CL_)", "Written by Claude (CL_)"), srch.src)}
+        ${srcs.map(k => opt(k, SRC_NAMES[k], srch.src)).join("")}
+      </select>
+      <select id="srch-dom" aria-label="${esc(L("Domaine", "Domain"))}">
+        ${opt("", L("Tous les domaines", "All domains"), srch.dom)}
+        ${DOMAIN_IDS.map(d => opt(String(d), `D${d} · ${domainName(d, "cissp")}`, srch.dom)).join("")}
+      </select>
+      <select id="srch-st" aria-label="${esc(L("Statut", "Status"))}">
+        ${opt("", L("Tous les statuts", "Any status"), srch.st)}
+        ${opt("new", L("Jamais répondues", "Never answered"), srch.st)}
+        ${opt("ko", L("Dernière réponse fausse", "Last answer wrong"), srch.st)}
+        ${opt("ok", L("Dernière réponse juste", "Last answer right"), srch.st)}
+        ${opt("flag", L("Marquées 🔖", "Marked 🔖"), srch.st)}
+      </select>
+    </div>
+    <div class="srch-selbar" id="srch-selbar"></div>
+  </section>
+  <section id="srch-res"></section>`;
+  app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => setSection(b.dataset.section));
+  const inp = document.getElementById("srch-q");
+  let deb = null;
+  inp.oninput = () => { clearTimeout(deb); deb = setTimeout(() => { srch.q = inp.value; srch.limit = 60; paintSearch(); }, 180); };
+  inp.onkeydown = e => { if (e.key === "Enter") { clearTimeout(deb); srch.q = inp.value; srch.limit = 60; paintSearch(); inp.blur(); } };
+  [["srch-src", "src"], ["srch-dom", "dom"], ["srch-st", "st"]].forEach(([id, k]) => {
+    document.getElementById(id).onchange = e => { srch[k] = e.target.value; srch.limit = 60; paintSearch(); };
+  });
+  paintSearch();
+  mountOffline();
+}
+function startSearchQuiz(qs) {
+  if (!qs.length) return;
+  const ids = qs.map(q => q.id);
+  // lab sérialisable (reprise) ; « s » distingue deux sélections différentes pour la sauvegarde automatique
+  let hsh = 0; for (const id of ids) hsh = (hsh * 31 + id) % 1000000007;
+  startQuiz({ mode: "mistakes", chapter_id: null, lab: { k: "search", n: qs.length, r: qs.length === 1 ? qRef(qs[0]) : undefined, s: hsh },
+    questions: srch.mix ? shuffle(qs) : qs, feedback: true });
+}
+function paintSearch() {
+  const fr = getLang() === "fr";
+  const L = (a, b) => (fr ? a : b);
+  const res = searchResults();
+  const box = document.getElementById("srch-res"), bar = document.getElementById("srch-selbar");
+  if (!box || !bar) return;
+  const byId = new Map(state.questions.map(q => [q.id, q]));
+  for (const id of [...srch.sel]) if (!byId.has(id)) srch.sel.delete(id);
+  const nSel = srch.sel.size;
+  const allIn = res.length > 0 && res.every(q => srch.sel.has(q.id));
+  bar.innerHTML = `
+    <span class="mono small"><b>${res.length}</b> ${L(res.length > 1 ? "résultats" : "résultat", res.length > 1 ? "results" : "result")}
+      · ${L("sélection", "selected")} <b>${nSel}</b></span>
+    <div class="row">
+      <button class="btn btn-ghost btn-sm" id="srch-all" ${res.length ? "" : "disabled"}>${esc(allIn ? L("Décocher les résultats", "Untick results") : L(`Tout cocher (${res.length})`, `Tick all (${res.length})`))}</button>
+      ${nSel ? `<button class="btn btn-ghost btn-sm" id="srch-clear">${esc(L("Vider la sélection", "Clear selection"))}</button>` : ""}
+      <label class="small srch-mix"><input type="checkbox" id="srch-mix" ${srch.mix ? "checked" : ""}> ${esc(L("Mélanger", "Shuffle"))}</label>
+      <button class="btn btn-primary btn-sm" id="srch-go" ${nSel ? "" : "disabled"}>▶ ${esc(L(`Répondre à la sélection (${nSel})`, `Answer selection (${nSel})`))}</button>
+    </div>`;
+  const shown = res.slice(0, srch.limit);
+  const lang = getLang();
+  box.innerHTML = res.length ? `<div class="srch-list">${shown.map(q => {
+    const tx = qText(q, lang), a = state.latest.get(q.id);
+    const st = a ? (a.is_correct ? `<span class="srch-st ok mono" title="${esc(L("Dernière réponse juste", "Last answer right"))}">✓</span>` : `<span class="srch-st ko mono" title="${esc(L("Dernière réponse fausse", "Last answer wrong"))}">✗</span>`) : "";
+    const qt = String(tx.question || "");
+    return `<div class="srch-item${srch.sel.has(q.id) ? " on" : ""}" data-sq="${q.id}">
+      <label class="srch-check"><input type="checkbox" data-sel="${q.id}" ${srch.sel.has(q.id) ? "checked" : ""} aria-label="${esc(L("Sélectionner", "Select") + " " + qRef(q))}"></label>
+      <div class="srch-body" data-open="${q.id}">
+        <p class="srch-meta">${refTag(q)} <span class="mono muted small">${esc(chLabel(q.chapter_id))} #${q.number}</span> ${st}${isFlagged(q) ? " 🔖" : ""}
+          <button class="btn btn-ghost btn-xs srch-answer" data-answer="${q.id}" title="${esc(L("Répondre à cette question", "Answer this question"))}">▶ ${esc(L("Répondre", "Answer"))}</button></p>
+        <p class="srch-text" lang="${tx.lang}">${esc(qt.slice(0, 220))}${qt.length > 220 ? "…" : ""}</p>
+      </div>
+    </div>`;
+  }).join("")}</div>
+  ${res.length > shown.length ? `<div class="row center"><button class="btn btn-ghost" id="srch-more">${esc(L(`Afficher plus (${res.length - shown.length} restantes)`, `Show more (${res.length - shown.length} left)`))}</button></div>` : ""}`
+    : `<section class="panel"><p class="muted">${esc(L("Aucune question ne correspond.", "No matching question."))}</p></section>`;
+  const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  on("srch-all", () => { if (allIn) res.forEach(q => srch.sel.delete(q.id)); else res.forEach(q => srch.sel.add(q.id)); paintSearch(); });
+  on("srch-clear", () => { srch.sel.clear(); paintSearch(); });
+  on("srch-more", () => { srch.limit += 100; paintSearch(); });
+  on("srch-go", () => {
+    // ordre de la recherche pour les questions visibles, puis le reste de la sélection
+    const order = new Map(state.questions.map((q, k) => [q.id, k]));
+    startSearchQuiz([...srch.sel].map(id => byId.get(id)).filter(Boolean).sort((a, b) => order.get(a.id) - order.get(b.id)));
+  });
+  const mix = document.getElementById("srch-mix"); if (mix) mix.onchange = () => { srch.mix = mix.checked; };
+  box.querySelectorAll("[data-sel]").forEach(c => c.onchange = () => {
+    const id = +c.dataset.sel; if (c.checked) srch.sel.add(id); else srch.sel.delete(id);
+    c.closest(".srch-item").classList.toggle("on", c.checked);
+    paintSearchBar();
+  });
+  box.querySelectorAll("[data-open]").forEach(b => b.onclick = () => {   // toucher le texte = cocher / décocher
+    const c = box.querySelector(`[data-sel="${b.dataset.open}"]`); if (c) { c.checked = !c.checked; c.onchange(); }
+  });
+  box.querySelectorAll("[data-answer]").forEach(b => b.onclick = e => { e.stopPropagation(); const q = byId.get(+b.dataset.answer); if (q) startSearchQuiz([q]); });
+}
+/** Met à jour seulement la barre de sélection (sans redessiner la liste, pour garder le défilement). */
+function paintSearchBar() {
+  const y = window.scrollY; paintSearch(); window.scrollTo(0, y);
+}
+
 function renderHome() {
   stopTimer();
   state.view = "home";
   if (!hasSection(state.section)) state.section = "guide";
   if (state.section === "improve") { renderImprove(); return; }
+  if (state.section === "search") { renderSearch(); return; }
   if (state.section === "revision" || state.section === "book" || state.section === "lmsum") { renderRevision(state.section); return; }
   const sec = state.section, cert = certOf(sec), CERT = cert.toUpperCase();
   const kind = sec.endsWith("practice") ? "practice" : "guide";
@@ -2148,6 +2330,7 @@ function labelOf(lab) {
     case "mistakes": return t("mode.mistakes");
     case "flagged": return t("mode.flagged");
     case "errorsOf": return t("mode.errorsOf", { label: labelOf(lab.of) });
+    case "search": return (getLang() === "fr" ? "Sélection" : "Selection") + (lab.n === 1 && lab.r ? ` · ${lab.r}` : ` · ${lab.n} Q`);
     default: return "";
   }
 }
@@ -2300,7 +2483,7 @@ function renderQuiz() {
       <div>
         <p class="mono kicker">${esc(z.label())}</p>
         <p class="mono q-count">Q ${pad(z.i + 1)}<span class="muted">/${pad(z.questions.length)}</span>
-          <span class="muted"> · ${chLabel(q.chapter_id)} #${q.number}</span></p>
+          <span class="muted"> · ${chLabel(q.chapter_id)} #${q.number}</span> ${refTag(q)}</p>
       </div>
       <div class="quiz-head-right">
         ${speedActive(z) ? `<span id="speed-clock" class="speed-clock mono" aria-live="off"></span>` : ""}
@@ -2432,7 +2615,7 @@ function renderResults() {
     const txt = qText(d.q);
     return `
     <details class="review ${d.ok ? "ok" : "ko"}" ${d.ok ? "" : "open"} lang="${txt.lang}">
-      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">${chLabel(d.q.chapter_id)}#${d.q.number}</span> ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
+      <summary><span class="mono">${d.ok ? "✓" : "✗"} ${pad(k + 1)}</span> <span class="muted mono">${chLabel(d.q.chapter_id)}#${d.q.number}</span> ${refTag(d.q)} ${esc(txt.question.slice(0, 110))}${txt.question.length > 110 ? "…" : ""}</summary>
       ${txt.scenario ? `<p class="muted small" data-tts="scenario">${esc(txt.scenario)}</p>` : ""}
       <p class="q-text-sm" data-tts="q">${esc(txt.question)}</p>
       <ol class="opts opts-sm">${txt.options.map((o, i) => {

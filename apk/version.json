@@ -1,7 +1,7 @@
 {
- "versionCode": 89,
- "versionName": "10.5",
+ "versionCode": 90,
+ "versionName": "10.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Voiture : réponds aux quiz à la voix pendant le temps de réflexion (« A », « réponse B », ou le texte du choix), ou « Ok Google, joue B sur CISSP Training ».",
- "notes": "Car: answer quizzes by voice during thinking time (\"A\", \"answer B\", or the choice text), or \"Hey Google, play B on CISSP Training\"."
+ "notes_fr": "Chaque question a maintenant un identifiant (BK_ = livre, CL_ = rédigée par Claude) + nouvel onglet 🔎 Rechercher : trouve des questions par identifiant ou mots-clés, coche-les et réponds-y.",
+ "notes": "Every question now has an ID (BK_ = book, CL_ = written by Claude) + new 🔎 Search tab: find questions by ID or keywords, tick them and answer them."
 }

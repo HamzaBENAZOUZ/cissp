@@ -1,7 +1,7 @@
 {
- "versionCode": 88,
- "versionName": "10.4",
+ "versionCode": 89,
+ "versionName": "10.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Télé : questions à plusieurs réponses, une réponse choisie avec la télécommande ne se décoche plus toute seule.",
- "notes": "TV: multiple-answer questions, an answer picked with the remote no longer unticks itself."
+ "notes_fr": "Voiture : réponds aux quiz à la voix pendant le temps de réflexion (« A », « réponse B », ou le texte du choix), ou « Ok Google, joue B sur CISSP Training ».",
+ "notes": "Car: answer quizzes by voice during thinking time (\"A\", \"answer B\", or the choice text), or \"Hey Google, play B on CISSP Training\"."
 }

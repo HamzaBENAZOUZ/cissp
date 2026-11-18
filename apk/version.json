@@ -1,7 +1,7 @@
 {
- "versionCode": 95,
- "versionName": "11.1",
+ "versionCode": 96,
+ "versionName": "11.2",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture audio plus naturelle : la voix ne dit plus « slash », « point » ni les symboles, épelle les sigles proprement, et annonce les parties des fiches par une phrase simple au lieu des libellés des boutons.",
- "notes": "More natural audio: the voice no longer says \"slash\", \"dot\" or symbols, spells acronyms cleanly, and introduces sheet parts with a simple phrase instead of button labels."
+ "notes_fr": "Lecture audio plus naturelle : sigles épelés lettre par lettre (T C P et non « tsep »), plus de « slash », « point » ni symboles lus, parties des fiches annoncées simplement.",
+ "notes": "More natural audio: acronyms spelled letter by letter, no more \"slash\", \"dot\" or symbols read aloud, sheet parts introduced simply."
 }

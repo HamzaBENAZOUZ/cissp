@@ -13,3 +13,8 @@
 ## Détails techniques
 - `js/app.js` : `audioText(x, lang)` (appelé par `spellAcr`), `PANE_SAY` / `paneSay()`, morceaux `{ el, say }` dans `speechUnits`
   (élément surligné, formule dite à la place), `h3.rev-part[data-say]`. `APP_VERSION` 11.1. `sw.js` : cache v81.
+
+## 11.2 / CCSP 3.23
+- CCSP : les sigles sont maintenant épelés lettre par lettre comme dans le CISSP (« T C P », pas « tsep »), avec la même
+  liste de sigles dits comme des mots (NIST, OWASP, SAML, CASB, SIEM, RAID…), plus STAR, ENISA, FIPS, SAN, NAS, GAAP, CAIQ, STIG.
+- CISSP : STAR, FIPS, SAN, NAS, STIG ajoutés à cette liste. Caches sw v82 (CISSP) / v45 (CCSP).

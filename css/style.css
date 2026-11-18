@@ -781,3 +781,5 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 /* Révision CISSP par domaine (11.4) : fiche Last Mile en tête de chaque domaine, titres de chapitre discrets */
 .rev-card-lms { border-left: 3px solid var(--accent, var(--green)); }
 .rev-card > summary .ch-title { min-width: 0; }
+/* Temps de lecture estimé devant les boutons « Lire » (11.7) */
+.read-est { font-size: .75rem; color: var(--muted); white-space: nowrap; align-self: center; margin-right: .1rem; }

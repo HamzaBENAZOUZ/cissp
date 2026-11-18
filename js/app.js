@@ -105,10 +105,33 @@ function resumeSpeak() {
   if (!player || !player.paused) return;
   player.paused = false; playFrom(player.idx);
 }
+/* Temps de lecture estimé affiché devant les boutons « Lire » (11.7) : ≈ 62 ms par caractère à vitesse 1, divisé par la
+   vitesse choisie, + un petit blanc par phrase. Le libellé est recalculé quand la vitesse change. */
+const READ_MS_PER_CHAR = 62;
+function readEstText(chars, units = 0) {
+  const ms = chars * READ_MS_PER_CHAR / (ttsRate || 1) + units * 250, min = Math.round(ms / 60000);
+  if (ms < 60000) return "< 1 min";
+  return min >= 60 ? `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")}` : `${min} min`;
+}
+/** Caractères et nombre de lignes d'une liste de lignes de texte. */
+const textSize = lines => ({ chars: lines.reduce((n, l) => n + String(l).length, 0), units: lines.length });
+/** Pose (ou met à jour) le badge « ⏱ 12 min » juste avant un bouton de lecture. */
+function setReadEst(btn, size) {
+  if (!btn || !size) return;
+  let sp = btn.previousElementSibling;
+  if (!sp || !sp.classList.contains("read-est")) { sp = document.createElement("span"); sp.className = "read-est mono"; btn.before(sp); }
+  sp.dataset.chars = size.chars; sp.dataset.units = size.units;
+  sp.textContent = "⏱ " + readEstText(size.chars, size.units);
+  sp.title = getLang() === "fr" ? "Temps de lecture estimé à la vitesse choisie" : "Estimated reading time at the chosen speed";
+}
+function refreshReadEst() {
+  document.querySelectorAll(".read-est").forEach(sp => { sp.textContent = "⏱ " + readEstText(+sp.dataset.chars || 0, +sp.dataset.units || 0); });
+}
 function setRate(dir) {
   const i = RATES.indexOf(ttsRate);
   ttsRate = RATES[Math.max(0, Math.min(RATES.length - 1, i + dir))];
   try { localStorage.setItem("cissp-tts-rate", String(ttsRate)); } catch { /* ignore */ }
+  refreshReadEst();
   if (player && !player.paused) { haltEngine(); playFrom(player.idx); } else renderPlayer();
 }
 /* Choix de la voix, par langue (appli Android : voix du téléphone ; navigateur : voix du navigateur). */
@@ -873,7 +896,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.6";
+const APP_VERSION = "11.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -2131,6 +2154,13 @@ function renderRevision() {
     const box = d.querySelector(".rev-pane"); box.innerHTML = revPaneHtml(r, pane, l);
     if (l !== getLang()) box.lang = l; else box.removeAttribute("lang");
   };
+  // temps estimé : fiche = volet affiché ; domaine = « Tout » de chaque fiche du domaine
+  const cardEst = d => { const r = itemOf(d); d.querySelectorAll("[data-revspeak]").forEach(b => setReadEst(b, textSize(revLines(r, paneOf(r), b.dataset.revspeak)))); };
+  app.querySelectorAll(".rev-card").forEach(cardEst);
+  app.querySelectorAll("[data-revdom]").forEach(sect => {
+    const rs = [...sect.querySelectorAll(".rev-card")].map(itemOf);
+    sect.querySelectorAll("[data-domspeak]").forEach(b => setReadEst(b, textSize(rs.flatMap(r => revLines(r, "all", b.dataset.domspeak)))));
+  });
   const boxParts = d => [...d.querySelectorAll(".rev-pane h3, .rev-pane h4, .rev-pane p, .rev-pane li")].map(el => el.matches("h3[data-say]") ? { el, say: el.dataset.say } : { el });
   app.querySelectorAll(".rev-card").forEach(d => {
     const r = itemOf(d);
@@ -2139,7 +2169,7 @@ function renderRevision() {
       else { revOpen.delete(revKey(r)); if (tvRev && tvRev.sec === sec && tvRev.r.id === r.id && !!tvRev.r.lms === !!r.lms) tvSheet(sec, null); }
     });
     d.querySelectorAll("[data-revpane]").forEach(b => b.onclick = () => {
-      stopSpeak(); setPane(d, r, b.dataset.revpane); tvSheet(sec, r, b.dataset.revpane, getLang());
+      stopSpeak(); setPane(d, r, b.dataset.revpane); tvSheet(sec, r, b.dataset.revpane, getLang()); cardEst(d);
     });
     d.querySelectorAll("[data-revspeak]").forEach(b => b.onclick = e => {
       e.preventDefault();

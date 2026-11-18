@@ -125,6 +125,25 @@ export class SupabaseStore {
     try { await this.sb.auth.signOut(); } catch { /* hors ligne */ }
   }
 
+  // ---------------------------------------------------------- date d'examen
+  // Gardée dans le compte (user_metadata) pour suivre l'utilisateur sur tous ses appareils (site, appli, tablette).
+  /** "AAAA-MM-JJ", "" (effacée), null (jamais enregistrée), ou undefined si le compte est injoignable. */
+  async getExamDate(field) {
+    if (this.offline || this.autonomous) return undefined;
+    try {
+      const { data, error } = await withTimeout(this.sb.auth.getUser(), 8000);
+      if (error || !data || !data.user) return undefined;
+      const v = (data.user.user_metadata || {})[field];
+      return typeof v === "string" ? v : null;
+    } catch { return undefined; }
+  }
+  /** Enregistre la date dans le compte ("" = effacée). Renvoie false si l'envoi a échoué. */
+  async setExamDate(field, v) {
+    if (this.offline || this.autonomous) return false;
+    try { const { error } = await withTimeout(this.sb.auth.updateUser({ data: { [field]: v || "" } }), 8000); return !error; }
+    catch { return false; }
+  }
+
   // ---------------------------------------------------------- hors ligne
   /** Télécharge le contenu et la progression sur l'appareil (IndexedDB). */
   async downloadOffline(content) {

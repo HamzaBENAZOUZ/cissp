@@ -827,7 +827,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.9";
+const APP_VERSION = "11.0";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -839,7 +839,9 @@ function renderVersion() {
   brand.appendChild(v);
 }
 // ------------------------------------------------------------------ date d'examen (compte à rebours J-x)
-const EXAM_KEY = "cissp-exam-date";
+const EXAM_KEY = "cissp-exam-date", EXAM_PEND = EXAM_KEY + "-pending", EXAM_FIELD = "cissp_exam_date";
+const lsExam = v => { try { if (v) localStorage.setItem(EXAM_KEY, v); else localStorage.removeItem(EXAM_KEY); } catch { /* ignore */ } };
+const lsExamPend = on => { try { if (on) localStorage.setItem(EXAM_PEND, "1"); else localStorage.removeItem(EXAM_PEND); } catch { /* ignore */ } };
 const examDate = () => { try { const v = localStorage.getItem(EXAM_KEY) || ""; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : ""; } catch { return ""; } };
 /** Jours restants avant l'examen (0 = aujourd'hui, négatif = passé), ou null si pas de date. */
 function examDaysLeft() {
@@ -889,14 +891,33 @@ function toggleExamPop(force) {
     </div>`;
   pop.hidden = false;
   const inp = pop.querySelector("#exam-input");
-  const save = v => { try { if (v) localStorage.setItem(EXAM_KEY, v); else localStorage.removeItem(EXAM_KEY); } catch { /* ignore */ } renderExam(); toggleExamPop(false); };
+  const save = v => { lsExam(v); renderExam(); toggleExamPop(false); pushExamDate(v); };
   pop.querySelector("#exam-ok").onclick = () => { if (inp.value) save(inp.value); else inp.focus(); };
   const clr = pop.querySelector("#exam-clear"); if (clr) clr.onclick = () => save("");
   inp.addEventListener("keydown", e => { if (e.key === "Enter" && inp.value) save(inp.value); });
   setTimeout(() => inp.focus(), 50);
 }
 // le compte à rebours change à minuit : on le recalcule quand l'appli revient au premier plan
-document.addEventListener("visibilitychange", () => { if (!document.hidden) renderExam(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { renderExam(); syncExamDate(); } });
+/** Envoie la date au compte ; en cas d'échec (hors ligne...), elle sera renvoyée à la prochaine synchro. */
+function pushExamDate(v) {
+  const st = state.store; if (!st || typeof st.setExamDate !== "function" || !state.session) return;
+  lsExamPend(true);
+  st.setExamDate(EXAM_FIELD, v).then(ok => { if (ok) lsExamPend(false); });
+}
+/** Date d'examen partagée entre appareils : celle du compte fait foi ; une date gardée seulement ici y est envoyée. */
+let examSyncAt = 0;
+async function syncExamDate(force = false) {
+  const st = state.store; if (!st || typeof st.getExamDate !== "function" || !state.session) return;
+  if (!force && Date.now() - examSyncAt < 60000) return;
+  examSyncAt = Date.now();
+  let pend = false; try { pend = localStorage.getItem(EXAM_PEND) === "1"; } catch { /* ignore */ }
+  if (pend) { if (await st.setExamDate(EXAM_FIELD, examDate())) lsExamPend(false); return; }
+  const r = await st.getExamDate(EXAM_FIELD);
+  if (r === undefined) return;
+  if (r === null) { if (examDate()) await st.setExamDate(EXAM_FIELD, examDate()); return; }
+  if (r !== examDate() && (r === "" || /^\d{4}-\d{2}-\d{2}$/.test(r))) { lsExam(r); renderExam(); }
+}
 
 // ------------------------------------------------------------------ mise à jour de l'appli Android
 // La dernière version est publiée sur le site (apk/version.json + apk/cissp-training.apk). L'appli compare
@@ -1503,6 +1524,7 @@ async function start() {
     applyStaticTexts();
     exportAuto();
     tvAutoConnect();
+    syncExamDate(true);
     // Application Android : tout est téléchargé automatiquement pour pouvoir réviser hors ligne.
     if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
       state.store.downloadOffline({ chapters, questions, notes: notes || [] })
@@ -1524,6 +1546,7 @@ async function backOnline() {
   try {
     const pending = (await state.store.offlineInfo()).pending;
     if (await state.store.goOnline()) {
+      syncExamDate(true);   // date d'examen changée hors ligne : envoyée au compte
       await refreshProgress();
       applyStaticTexts();
       if (state.view === "home" || state.view === "history") rerender();

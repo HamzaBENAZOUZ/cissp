@@ -1,7 +1,7 @@
 {
- "versionCode": 93,
- "versionName": "10.9",
+ "versionCode": 94,
+ "versionName": "11.0",
  "apk": "cissp-training.apk",
- "notes_fr": "Surlignage jaune réparé au début de la lecture des fiches : le titre du chapitre et le volet sont surlignés, la phrase lue n'est plus cachée sous la barre de lecture, et les émojis ne sont plus lus à voix haute.",
- "notes": "Yellow highlight fixed at the start of reading a sheet: the chapter title and pane are highlighted, the sentence read is no longer hidden under the reading bar, and emojis are no longer read aloud."
+ "notes_fr": "La date d'examen est maintenant enregistrée dans ton compte : saisie une fois, elle reste sur le site, l'appli et tous tes appareils.",
+ "notes": "Your exam date is now saved in your account: set it once and it stays on the website, the app and all your devices."
 }

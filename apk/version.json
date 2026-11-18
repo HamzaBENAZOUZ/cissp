@@ -1,7 +1,7 @@
 {
- "versionCode": 90,
- "versionName": "10.6",
+ "versionCode": 91,
+ "versionName": "10.7",
  "apk": "cissp-training.apk",
- "notes_fr": "Chaque question a maintenant un identifiant (BK_ = livre, CL_ = rédigée par Claude) + nouvel onglet 🔎 Rechercher : trouve des questions par identifiant ou mots-clés, coche-les et réponds-y.",
- "notes": "Every question now has an ID (BK_ = book, CL_ = written by Claude) + new 🔎 Search tab: find questions by ID or keywords, tick them and answer them."
+ "notes_fr": "Lecture audio en arrière-plan : la lecture continue quand on quitte l'appli ou qu'on verrouille le téléphone, avec une notification lecture/pause/précédent/suivant.",
+ "notes": "Background audio: reading continues when you leave the app or lock the phone, with a play/pause/previous/next notification."
 }

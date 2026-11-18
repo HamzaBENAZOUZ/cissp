@@ -187,7 +187,46 @@ function renderTvProgress() {
   el.querySelector(".tv-progress-fill").style.width = p + "%";
   el.querySelector(".tv-progress-txt").textContent = `${i}/${n} · ${p} %`;
 }
+/* Appli Android : notification de lecture (lecture en arrière-plan et écran verrouillé, comme un lecteur de musique).
+   L'appli reçoit l'état du lecteur et renvoie les commandes de la notification, du casque ou de l'écran verrouillé. */
+let mediaSig = "";
+function notifyMedia() {
+  if (!nativeTTS || typeof nativeTTS.mediaState !== "function") return;
+  const P = player, u = P && P.units[P.idx];
+  const o = P ? { state: P.paused ? "pause" : "play", title: P.title || "", text: (u && u.text || "").slice(0, 160), idx: P.idx, n: P.units.length }
+              : { state: "stop" };
+  const sig = JSON.stringify(o);
+  if (sig === mediaSig) return;
+  mediaSig = sig;
+  try { nativeTTS.mediaState(sig); } catch { /* ignore */ }
+}
+window.__media = act => {
+  if (act === "stop") { if (player) stopSpeak(); else notifyMedia(); return; }
+  if (!player) return;
+  if (act === "play") resumeSpeak();
+  else if (act === "pause") pauseSpeak();
+  else if (act === "next") gotoUnit(player.idx + 1);
+  else if (act === "prev") gotoUnit(player.idx - 1);
+  else if (/^seek:\d+$/.test(act)) gotoUnit(parseInt(act.slice(5), 10));
+};
+/** Titre affiché dans la notification : le titre le plus proche du bouton de lecture, sinon le début du texte lu. */
+function mediaTitle(btn, units) {
+  let t = "";
+  try {
+    const sum = btn && btn.closest("details") && btn.closest("details").querySelector("summary");   // fiche : « D1 Security and Risk Management »
+    if (sum) t = sum.textContent.trim();
+    for (const sel of ["h1, h2, h3", "h4"])   // titre de la fiche (domaine, chapitre) avant celui d une section
+      for (let el = btn; el && el !== document.body && !t; el = el.parentElement) {
+        const h = el.querySelector(sel);
+        if (h && h.textContent.trim()) t = h.textContent.trim();
+      }
+  } catch { /* ignore */ }
+  if (!t) { const u = units.find(x => x.text); t = u ? u.text : ""; }
+  t = t.replace(/\s+/g, " ");
+  return t.length > 70 ? t.slice(0, 68) + "…" : t;
+}
 function renderPlayer() {
+  notifyMedia();
   renderTvProgress();
   let bar = document.getElementById("tts-bar");
   if (!player) {   // mode Speed : le lecteur reste affiché entre deux lectures (chrono, question suivante)
@@ -371,7 +410,7 @@ function speakUnits(key, units, lang, btn, onEnd) {
   if (!units.some(u => u.text)) units = [];
   if (!units.length) { if (onEnd) onEnd(); return; }
   speakingId = key; speakEnd = onEnd || null; btn.classList.add("on");
-  player = { key, units, lang, btn, idx: 0, paused: false };
+  player = { key, units, lang, btn, idx: 0, paused: false, title: mediaTitle(btn, units) };
   playFrom(0);
 }
 /** Lit les phrases du lecteur à partir de la n° « from », à la vitesse choisie. */
@@ -773,7 +812,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.6";
+const APP_VERSION = "10.7";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

@@ -1505,7 +1505,7 @@ async function start() {
     tvAutoConnect();
     // Application Android : tout est téléchargé automatiquement pour pouvoir réviser hors ligne.
     if (IN_APP && state.store.kind === "supabase" && !state.store.offline && !offlineEnabled()) {
-      state.store.downloadOffline({ chapters, questions })
+      state.store.downloadOffline({ chapters, questions, notes: notes || [] })
         .then(() => { toast(t("off.done", { n: questions.length }), "ok"); if (state.view === "home") renderHome(); })
         .catch(e => { console.error(e); toast(t("off.fail") + (e.message || e), "err"); });
     }
@@ -1536,7 +1536,7 @@ async function backOnline() {
 async function downloadOffline(btn) {
   btn.disabled = true; btn.textContent = t("off.downloading");
   try {
-    await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions });
+    await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions, notes: [...state.notes.values()] });
     const sw = IN_APP || await registerSW();
     toast(sw ? t("off.done", { n: state.questions.length }) : t("off.doneNoSW"), "ok");
   } catch (e) { console.error(e); toast(t("off.fail") + (e.message || e), "err"); }
@@ -1556,7 +1556,7 @@ async function toggleAutonomous(btn) {
   btn.disabled = true;
   try {
     if (!state.store.offline) {   // copie fraîche avant de partir
-      await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions });
+      await state.store.downloadOffline({ chapters: state.chapters, questions: state.questions, notes: [...state.notes.values()] });
     } else if (!offlineEnabled()) throw new Error(t("auto.needDownload"));
     setAutonomous(true);
     location.reload();

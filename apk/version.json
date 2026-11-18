@@ -1,7 +1,7 @@
 {
- "versionCode": 96,
- "versionName": "11.2",
+ "versionCode": 97,
+ "versionName": "11.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture audio plus naturelle : sigles épelés lettre par lettre (T C P et non « tsep »), plus de « slash », « point » ni symboles lus, parties des fiches annoncées simplement.",
- "notes": "More natural audio: acronyms spelled letter by letter, no more \"slash\", \"dot\" or symbols read aloud, sheet parts introduced simply."
+ "notes_fr": "Android Auto : Révision et Livre CISSP fusionnés, comme sur le site. Une seule liste « Révision + Livre CISSP » : chaque chapitre lit la fiche puis le texte du livre.",
+ "notes": "Android Auto: CISSP Review and Book merged, as on the site. One list \"CISSP Review + Book\": each chapter reads the sheet, then the book text."
 }

@@ -873,7 +873,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.2";
+const APP_VERSION = "11.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1457,19 +1457,24 @@ function autoGroups(lang) {
         return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Domaine " : "Domain ") + r.id + " · " + t("domain." + r.id, {}, lang),
           subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
-    groups.push({ title: t("rev.tab", {}, lang), subtitle: REVISION.length + (fr ? " chapitres" : " chapters"),
-      items: REVISION.map(r => { const au = r.audio && r.audio[lang];
-        return { key: "rev-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id),
-          subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("rev.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
+    // Révision + Livre CISSP fusionnés (comme sur le site, 11.3) : un seul élément par chapitre, qui lit la fiche
+    // (version audio si elle existe, sinon Résumé / Préparer l'examen / À mémoriser) puis le texte du livre
+    // (Summary et Study Essentials, en français s'il est traduit).
+    const bookLang = id => { const n = (state.notes && state.notes.get(id)) || {}; return lang === "fr" && !(n.summary_fr && n.summary_fr.length) ? "en" : lang; };
+    const bookLines = id => hasBook(id) && bookLang(id) === lang
+      ? BOOK_PANES.flatMap(p => { const ls = revLines({ id }, p, lang); return ls.length ? ["§ " + noEmoji(paneTitle(p, lang)) + ".", ...ls.map(clean)] : []; }) : [];
+    groups.push({ title: t("rev.tabMerged", {}, lang), subtitle: REVISION.length + (fr ? " chapitres · fiche + livre" : " chapters · sheet + book"),
+      items: REVISION.map(r => { const au = r.audio && r.audio[lang], bk = bookLines(r.id);
+        return { key: "revbook-" + r.id + "-" + lang + (au ? "-audio" : "") + (bk.length ? "-book" : ""), title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id),
+          subtitle: (au ? (fr ? "Version audio" : "Audio version") : (fr ? "Fiche" : "Sheet")) + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
+          parts: [...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; }) });
+    // Chapitres du livre dont le texte n'existe pas dans la langue de l'appli (ex. pas encore traduit) : liste à part, en anglais.
     if (state.notes && state.notes.size) {
-      const ids = [...state.notes.keys()].sort((a, b) => a - b);
-      groups.push({ title: t("book.tab", {}, lang), subtitle: ids.length + (fr ? " chapitres" : " chapters"),
-        items: ids.map(id => {
-          const n = state.notes.get(id) || {}, hasFrTxt = !!(n.summary_fr && n.summary_fr.length);
-          const L = fr && hasFrTxt ? "fr" : "en";
+      const ids = [...state.notes.keys()].sort((a, b) => a - b).filter(id => bookLang(id) !== lang || !REVISION.some(r => r.id === id));
+      if (ids.length) groups.push({ title: t("book.tab", {}, lang), subtitle: ids.length + (fr ? " chapitres" : " chapters"),
+        items: ids.map(id => { const L = bookLang(id);
           return { key: "book-" + id + "-" + L, title: (L === "fr" ? "Chapitre " : "Chapter ") + id + " · " + chTitle(id), subtitle: t("book.tab", {}, lang),
-            lang: L, parts: lines({ id }, BOOK_PANES, L) };
-        }) });
+            lang: L, parts: lines({ id }, BOOK_PANES, L) }; }) });
     }
     // Quiz audio : question et propositions, un temps de réflexion, puis la bonne réponse et l'explication.
     const quizItem = (q, k) => {

@@ -27,7 +27,7 @@ const state = {
   attempts: [], latest: new Map(),
   quiz: null, timer: null, lastResult: null,
   view: "boot", authMode: "login",
-  section: (() => { try { const v = localStorage.getItem("cissp-section"); return SECTIONS.includes(v) ? v : "guide"; } catch { return "guide"; } })(),
+  section: (() => { try { const v = localStorage.getItem("cissp-section"); return v === "book" ? "revision" : SECTIONS.includes(v) ? v : "guide"; } catch { return "guide"; } })(),
 };
 
 // ------------------------------------------------------------------ utils
@@ -749,7 +749,7 @@ const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === s
 // « revision » : fiches de révision (js/revision.js), sans questions ; visible dès que le CISSP est chargé.
 // « book » : sections Summary / Study Essentials du livre (table cissp_book_notes), visible si la table est remplie.
 const hasSection = sec => (sec === "improve" || sec === "search") ? state.questions.length > 0 : (sec === "revision" || sec === "lmsum") ? state.chapters.some(c => c.id <= 100)
-  : sec === "book" ? !!(state.notes && state.notes.size) : state.chapters.some(c => secOf(c.id) === sec);
+  : sec === "book" ? false : state.chapters.some(c => secOf(c.id) === sec);
 const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
 /** Nom d'un domaine, selon la certification (8 domaines CISSP, 6 domaines CCSP). */
 const domainName = (d, cert = secCert()) => t((cert === "ccsp" ? "ccspDomain." : "domain.") + d);
@@ -812,7 +812,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "10.7";
+const APP_VERSION = "10.8";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1088,7 +1088,7 @@ function tvSync() {
       kicker: sec === "lmsum" ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
       title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, lang)}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
       pane: t("rev.pane." + pane, {}, lang), head: revSpeech(r, pane, lang),
-      kind: ["sum", "bsum", "bess"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
+      kind: ["sum", "bsum", "bess", "all"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
     });
     return;
   }
@@ -1750,7 +1750,7 @@ function savedPanel() {
  *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
 function secTabs(sec) {
   const nIn = s => s === "search" ? state.questions.length : s === "improve" ? mistakes().length : s === "revision" ? REVISION.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
-  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tab"), book: t("book.tab"),
+  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tabMerged"),
     improve: getLang() === "fr" ? "Axes d'amélioration" : "Improvement areas",
     search: getLang() === "fr" ? "🔎 Rechercher" : "🔎 Search",
   };
@@ -1925,6 +1925,10 @@ const BOOK_PANES = ["bsum", "bess"];   // onglet « Livre CISSP » : Summary / S
 const revOpen = new Map();   // "section:chapitre" -> volet affiché
 /** Lignes d'un volet : fiche (revision.js) ou texte du livre (state.notes, version FR si elle existe). */
 function revLines(r, pane, lang) {
+  if (pane === "all") return allPanes(r, lang).flatMap(p => {
+    const mixed = ["sum", "audio", "bsum", "bess"].includes(p), ls = revLines(r, p, lang);
+    return ls.length ? ["## " + paneTitle(p, lang), ...(mixed ? ls : ls.map(x => "- " + x))] : [];
+  });
   if (pane === "bsum" || pane === "bess") {
     const n = state.notes.get(r.id) || {};
     const en = pane === "bsum" ? n.summary : n.essentials, fr = pane === "bsum" ? n.summary_fr : n.essentials_fr;
@@ -1937,10 +1941,18 @@ function revLines(r, pane, lang) {
 function revSpeech(r, pane, lang) {
   if (r.lms) return joinSpeech([(lang === "fr" ? "Domaine " : "Domain ") + r.id, t("domain." + r.id, {}, lang), t("rev.pane." + pane, {}, lang)]);
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
-  const head = t("rev.pane." + pane, {}, lang);
+  const head = paneTitle(pane, lang);
   return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head]);
 }
+/** Volets d'un chapitre de la Révision fusionnée : fiche (Résumé, Préparer l'examen, À mémoriser), puis texte du livre. */
+const hasBook = id => !!(state.notes && state.notes.get(id));
+const allPanes = (r, lang) => [...REV_PANES, ...(hasBook(r.id) ? BOOK_PANES : [])];
+const paneTitle = (p, lang) => t(BOOK_PANES.includes(p) ? "rev.pane.book." + p : "rev.pane." + p, {}, lang);
 function revPaneHtml(r, pane, lang) {
+  if (pane === "all") return allPanes(r, lang).map(p => {
+    const inner = revPaneHtml(r, p, lang);
+    return inner.replace(/<[^>]+>/g, "").trim() ? `<h3 class="rev-part${BOOK_PANES.includes(p) ? " rev-part-book" : ""}">${esc(paneTitle(p, lang))}</h3>${inner}` : "";
+  }).join("");
   if (pane === "sum" || pane === "audio" || pane === "bsum" || pane === "bess") {
     // Lignes « ## » = sous-titre, « - » = puce (regroupées en liste), sinon paragraphe.
     let html = "", list = [];
@@ -1961,7 +1973,12 @@ function renderRevision(sec = "revision") {
   const ITEMS = isBook ? [...state.notes.keys()].sort((a, b) => a - b).map(id => ({ id }))
     : isLms ? LMSUM.map(r => ({ ...r, lms: true })) : REVISION;
   const key = id => sec + ":" + id;
-  const panesOf = r => !isBook && r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
+  // Révision fusionnée (10.8) : pour chaque chapitre, la fiche ET le texte du livre (ex-onglet « Livre CISSP »), plus « Tout ».
+  const panesOf = r => {
+    if (isBook || isLms) return r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
+    return [...PANES, ...(r && r.audio && r.audio[lang] ? ["audio"] : []), ...(r && hasBook(r.id) ? BOOK_PANES : []), "all"];
+  };
+  const paneBtn = (p, pane) => `<button class="seg-btn${BOOK_PANES.includes(p) ? " seg-book" : ""}" data-revpane="${p}" aria-pressed="${p === pane}">${esc(isBook ? t("rev.pane." + p) : paneTitle(p, lang))}</button>`;
   const paneOf = id => { const P = panesOf(ITEMS.find(x => x.id === id)); const p = revOpen.get(key(id)); return P.includes(p) ? p : P[0]; };
   const card = r => {
     const c = chById(r.id), pane = paneOf(r.id);
@@ -1972,7 +1989,7 @@ function renderRevision(sec = "revision") {
       <div class="rev-body">
         <div class="rev-tools">
           <div class="seg rev-panes" role="group">
-            ${panesOf(r).map(p => `<button class="seg-btn" data-revpane="${p}" aria-pressed="${p === pane}">${esc(t("rev.pane." + p))}</button>`).join("")}
+            ${panesOf(r).map(p => paneBtn(p, pane)).join("")}
           </div>
           <div class="row rev-speak">
             ${`
@@ -1994,9 +2011,9 @@ function renderRevision(sec = "revision") {
   <div id="offline-slot"></div>
   <section class="hero">
     <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : isLms ? "last-mile-summary" : "review"} --lang=${lang}</p>
-    <h1 class="glitch" data-text="${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review"}">${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review"}</h1>
+    <h1 class="glitch" data-text="${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review + Book"}">${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review + Book"}</h1>
     ${secTabs(sec)}
-    <p class="muted">${esc(t(isBook ? "book.sub" : isLms ? "lms.sub" : "rev.sub", { n: ITEMS.length }))}</p>
+    <p class="muted">${esc(t(isBook ? "book.sub" : isLms ? "lms.sub" : "rev.subMerged", { n: ITEMS.length }))}</p>
     <div class="row"><button class="btn btn-ghost btn-sm" id="rev-open-all">${esc(t("rev.openAll"))}</button>
       <button class="btn btn-ghost btn-sm" id="rev-close-all">${esc(t("rev.closeAll"))}</button></div>
   </section>
@@ -2028,7 +2045,7 @@ function renderRevision(sec = "revision") {
         box.innerHTML = revPaneHtml(r, pane, l); box.lang = l;
         restore = () => { if (box.isConnected && (paneOf(id)) === pane) { box.innerHTML = revPaneHtml(r, pane, getLang()); box.removeAttribute("lang"); } };
       }
-      const parts = [revSpeech(r, pane, l), ...[...box.querySelectorAll("h4, p, li")].map(el => ({ el }))];
+      const parts = [revSpeech(r, pane, l), ...[...box.querySelectorAll("h3, h4, p, li")].map(el => ({ el }))];
       speakUnits(k, speechUnits(parts, l), l, b, restore);
     });
   });
@@ -2207,7 +2224,8 @@ function renderHome() {
   if (!hasSection(state.section)) state.section = "guide";
   if (state.section === "improve") { renderImprove(); return; }
   if (state.section === "search") { renderSearch(); return; }
-  if (state.section === "revision" || state.section === "book" || state.section === "lmsum") { renderRevision(state.section); return; }
+  if (state.section === "book") state.section = "revision";   // Livre CISSP fusionné dans Révision (10.8)
+  if (state.section === "revision" || state.section === "lmsum") { renderRevision(state.section); return; }
   const sec = state.section, cert = certOf(sec), CERT = cert.toUpperCase();
   const kind = sec.endsWith("practice") ? "practice" : "guide";
   const inSec = q => secOf(q.chapter_id) === sec;

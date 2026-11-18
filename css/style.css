@@ -393,6 +393,10 @@ code { font-family: var(--mono); font-size: .85em; }
 .rev-tools { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin-bottom: .6rem; }
 .rev-panes { flex-wrap: wrap; }
 .rev-panes .seg-btn { font-size: .82rem; padding: 6px 12px; }
+/* Révision + Livre fusionnés (10.8) : volets du livre repérés, titres de partie dans « Tout le chapitre » */
+.rev-panes .seg-btn.seg-book:not([aria-pressed="true"]) { font-style: italic; }
+.rev-pane h3.rev-part { margin: 1.6rem 0 .5rem; padding-top: .9rem; border-top: 1px solid var(--line-2); font-size: 1.1rem; }
+.rev-pane h3.rev-part:first-child { margin-top: .2rem; padding-top: 0; border-top: 0; }
 .rev-pane p { margin: 0 0 .7rem; line-height: 1.6; }
 .rev-pane h4 { margin: 1.1rem 0 .4rem; font-size: 1rem; color: var(--accent, inherit); }
 .rev-pane h4:first-child { margin-top: .2rem; }

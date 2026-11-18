@@ -1,7 +1,7 @@
 {
- "versionCode": 91,
- "versionName": "10.7",
+ "versionCode": 92,
+ "versionName": "10.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture audio en arrière-plan : la lecture continue quand on quitte l'appli ou qu'on verrouille le téléphone, avec une notification lecture/pause/précédent/suivant.",
- "notes": "Background audio: reading continues when you leave the app or lock the phone, with a play/pause/previous/next notification."
+ "notes_fr": "Révision et Livre CISSP fusionnés : pour chaque chapitre, la fiche et le texte du livre au même endroit, plus « Tout le chapitre ».",
+ "notes": "CISSP Review and Book merged: for each chapter, the study sheet and the book text in one place, plus \"Whole chapter\"."
 }

@@ -763,3 +763,18 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .srch-text { margin: 0; line-height: 1.4; overflow-wrap: anywhere; }
 .srch-st.ok { color: var(--green); } .srch-st.ko { color: var(--red); }
 .srch-answer { margin-left: auto; }
+
+/* ---- PC : barre de lecture compacte, sur une ligne, rangée dans l'en-tête (tout en haut) ----
+   Elle ne recouvre plus les questions ni les boutons (classe .in-topbar posée par placeTtsBar dans app.js). */
+.topbar:has(> .tts-bar.in-topbar:not([hidden])) { flex-wrap: wrap; row-gap: 6px; }
+.tts-bar.in-topbar { position: static; transform: none; z-index: auto; max-width: none; flex-wrap: nowrap; gap: 3px; padding: 3px 6px;
+  border-radius: 999px; box-shadow: none; font-size: .85rem; margin: 0 auto; order: 0; }
+.tts-bar.in-topbar .tts-ctl { gap: 3px; }
+.tts-bar.in-topbar .tts-btn { min-width: 26px; height: 26px; padding: 0 6px; font-size: .9rem; }
+.tts-bar.in-topbar .tts-btn svg { width: 13px; height: 13px; }
+.tts-bar.in-topbar .tts-btn.tts-main { min-width: 30px; height: 26px; }
+.tts-bar.in-topbar .tts-rate { min-width: 2.6em; font-size: .8rem; }
+.tts-bar.in-topbar .tts-pos { font-size: .7rem; padding: 0 2px; }
+.tts-bar.in-topbar .tts-voice { max-width: 170px; height: 26px; padding: 0 6px; font-size: .74rem; }
+/* écran moyen : la barre passe sur sa propre petite ligne sous le logo et les boutons de l'en-tête */
+@media (max-width: 1499px) { .tts-bar.in-topbar { order: 3; } }

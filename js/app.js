@@ -225,6 +225,16 @@ function mediaTitle(btn, units) {
   t = t.replace(/\s+/g, " ");
   return t.length > 70 ? t.slice(0, 68) + "…" : t;
 }
+/* PC (souris, écran large) : la barre de lecture est rangée dans l'en-tête, en haut de la page,
+   au lieu de flotter par-dessus le contenu. Téléphone, tablette, appli et télé : barre flottante d'avant. */
+const DESK_BAR = window.matchMedia ? matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)") : { matches: false };
+function placeTtsBar(bar) {
+  const top = document.querySelector(".topbar");
+  const inTop = !!(DESK_BAR.matches && top && !document.body.classList.contains("tv-mode"));
+  const want = inTop ? top : document.body;
+  if (bar.parentNode !== want) { if (inTop) top.insertBefore(bar, top.querySelector(".topbar-right")); else document.body.appendChild(bar); }
+  bar.classList.toggle("in-topbar", inTop);
+}
 function renderPlayer() {
   notifyMedia();
   renderTvProgress();
@@ -258,6 +268,7 @@ function renderPlayer() {
       if (!player.paused) { haltEngine(); playFrom(player.idx); }   // reprend la phrase avec la nouvelle voix
     });
   }
+  placeTtsBar(bar);
   const fr = getLang() === "fr", paused = player.paused, P = player;
   const btn = (act, label, body, cls = "") => `<button class="tts-btn${cls}" data-tts-act="${act}" title="${label}" aria-label="${label}">${body}</button>`;
   const svg = (d, s = 16) => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="${d}" fill="currentColor"/></svg>`;

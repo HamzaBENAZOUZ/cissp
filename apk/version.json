@@ -1,7 +1,7 @@
 {
- "versionCode": 92,
- "versionName": "10.8",
+ "versionCode": 93,
+ "versionName": "10.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Révision et Livre CISSP fusionnés : pour chaque chapitre, la fiche et le texte du livre au même endroit, plus « Tout le chapitre ».",
- "notes": "CISSP Review and Book merged: for each chapter, the study sheet and the book text in one place, plus \"Whole chapter\"."
+ "notes_fr": "Surlignage jaune réparé au début de la lecture des fiches : le titre du chapitre et le volet sont surlignés, la phrase lue n'est plus cachée sous la barre de lecture, et les émojis ne sont plus lus à voix haute.",
+ "notes": "Yellow highlight fixed at the start of reading a sheet: the chapter title and pane are highlighted, the sentence read is no longer hidden under the reading bar, and emojis are no longer read aloud."
 }

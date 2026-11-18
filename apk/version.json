@@ -1,7 +1,7 @@
 {
- "versionCode": 94,
- "versionName": "11.0",
+ "versionCode": 95,
+ "versionName": "11.1",
  "apk": "cissp-training.apk",
- "notes_fr": "La date d'examen est maintenant enregistrée dans ton compte : saisie une fois, elle reste sur le site, l'appli et tous tes appareils.",
- "notes": "Your exam date is now saved in your account: set it once and it stays on the website, the app and all your devices."
+ "notes_fr": "Lecture audio plus naturelle : la voix ne dit plus « slash », « point » ni les symboles, épelle les sigles proprement, et annonce les parties des fiches par une phrase simple au lieu des libellés des boutons.",
+ "notes": "More natural audio: the voice no longer says \"slash\", \"dot\" or symbols, spells acronyms cleanly, and introduces sheet parts with a simple phrase instead of button labels."
 }

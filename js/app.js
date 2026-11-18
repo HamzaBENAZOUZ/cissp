@@ -310,7 +310,11 @@ const ACR_WORDS = new Set(("NAT WEP SAML PASTA STRIDE DREAD VAST TRIKE OCTAVE OW
   "LAND KRACK SPIT PIN HIPAA SOX COPPA FERPA FISMA ITAR EAR SCAP SHA REST SOAP JSON TOCTOU SAMM BSIMM IDEAL COTS RAD SAST DAST IAST SIEM SOAR " +
   "CSIRT CIRT SOC SCIM LDAP LDAPS RADIUS TACACS FIDO XACML PAM ABAC RBAC MAC DAC ISO MITRE ATTACK POP IMAP ARP IKE DNSSEC PAP CHAP EAP PEAP " +
   "JPEG ASCII SIP NAC WAF VXLAN VLAN LAN WAN TKIP IMSI SIM MIME IDEA CISO PUF SYN ACK NATO UNIX BEST MOST PLUS MIEUX FIRST PRIMARY MAIN PREMIER PREMI SURTOUT MOINS VRAIE FAUSSE TRUE FALSE NOT PAS SAUF LEAST FEWEST HIGHEST MAINLY AVOIDED BEFORE MUST AVANT MINIMUM UPDATE SELECT WHERE BEGIN COMMIT FORTE VITER TEMPEST LEAP ACID COPE OVAL FAST SENTRY CAST POODLE BEAST GHOST SOCKS OASIS OAKLEY WORM PATRIOT CARROT HOSTS LAPS BIOS DARPA FEMA CNIL OSINT INERGEN SONET").split(" "));
-function spellAcr(x) { return typeof x === "string" ? x.replace(/\b[A-Z]{2,7}\b/g, w => ACR_WORDS.has(w) ? w : w.split("").join(".")) : x; }
+/* Sigles épelés lettre par lettre, séparées par des espaces (avec des points, certaines voix disaient « point »). */
+function spellAcr(x, lang) {
+  if (typeof x !== "string") return x;
+  return audioText(x, lang).replace(/\b[A-Z]{2,7}\b/g, w => ACR_WORDS.has(w) ? w : w.split("").join(" "));
+}
 const joinSpeech = parts => parts.filter(Boolean).map(x => String(x).trim()).filter(Boolean)
   .map(x => /[.?!:;…]$/.test(x) ? x : x + ".").join(" ");
 /* Voix française : de préférence « Microsoft Denise Online (Natural) - French (France) » sur Edge,
@@ -403,6 +407,10 @@ function speechUnits(parts, lang) {
     if (p.pause) { units.push({ pause: p.pause, text: "" }); continue; }   // silence (mode Speed : 1 s entre les propositions)
     if (typeof p === "string") { const x = joinSpeech([p]); if (x) units.push({ text: x }); continue; }
     if (!p.el) continue;
+    if (typeof p.say === "string") {   // libellé d'interface remplacé par une formule naturelle (ou passé si vide)
+      if (p.say) units.push({ text: p.say, el: p.el, range: HL_API ? textRange(p.el, 0, p.el.textContent.length) : null });
+      continue;
+    }
     const text = p.el.textContent, spans = sentenceSpans(text, lang);
     spans.forEach(([a, b], i) => {
       let x = text.slice(a, b);
@@ -414,13 +422,51 @@ function speechUnits(parts, lang) {
   return units;
 }
 /** Lit des phrases (anglais ou français) en surlignant celle en cours ; un second clic sur le même bouton arrête. */
+/* ---- Texte adapté à l'écoute ----
+   Le texte affiché ne change pas ; seul le texte envoyé à la voix est réécrit comme on le dirait à l'oral :
+   « TCP/IP » -> « TCP IP », « lecture/écriture » -> « lecture ou écriture », « → » -> une pause, « ≠ » -> « différent de »,
+   « i.e. » -> « c'est-à-dire », « utilisateur(s) » -> « utilisateurs »… (sinon la voix dit « slash », « point », « flèche »). */
+const SAY = {
+  fr: { ie: "c'est-à-dire", eg: "par exemple", vs: "contre", or: "ou", and: "et", ne: "différent de", le: "inférieur ou égal à",
+        ge: "supérieur ou égal à", approx: "environ", times: "fois", minus: "moins", per: "sur", pow: "puissance" },
+  en: { ie: "that is", eg: "for example", vs: "versus", or: "or", and: "and", ne: "not equal to", le: "at most",
+        ge: "at least", approx: "about", times: "times", minus: "minus", per: "per", pow: "to the power of" },
+};
+function audioText(x, lang) {
+  if (typeof x !== "string" || !x) return x;
+  const L = SAY[lang === "fr" || lang === "en" ? lang : /[àâçéèêëîïôûùœ]/i.test(x) ? "fr" : "en"];
+  let s = x
+    .replace(/\bi\.\s?e\.,?/gi, L.ie + ",").replace(/\be\.\s?g\.,?/gi, L.eg + ",").replace(/\bp\.\s?ex\./gi, L.eg).replace(/\bc\.-à-d\./gi, "c'est-à-dire")
+    .replace(/\bvs\.?(?=\s)/gi, L.vs)
+    .replace(/\b(et|and)\s*\/\s*(ou|or)\b/gi, L.or)
+    .replace(/(\p{L})\((s|e|es|x|nt)\)/gu, "$1$2");   // utilisateur(s), protégé(e)
+  if (!/:\/\//.test(s)) {
+    s = s.replace(/(\d)\s*\/\s*(\d)/g, `$1 ${L.per} $2`);
+    for (let k = 0; k < 4; k++) {   // A/B/C : plusieurs barres de suite
+      const t2 = s.replace(/([\p{L}\p{N}][\p{L}\p{N}.+-]*)\s*\/\s*([\p{L}\p{N}][\p{L}\p{N}+-]*)/gu,
+        (m, a, b) => /^[A-Z0-9.+-]+$/.test(a) && /^[A-Z0-9+-]+$/.test(b) ? `${a} ${b}` : `${a} ${L.or} ${b}`);
+      if (t2 === s) break; s = t2;
+    }
+    s = s.replace(/\s\/\s/g, ", ").replace(/\//g, " ");
+  }
+  s = s
+    .replace(/\s*[→⇒⟶➔➜←⇐↔⇔]\s*/g, ", ")
+    .replace(/\s*≠\s*/g, ` ${L.ne} `).replace(/\s*≤\s*/g, ` ${L.le} `).replace(/\s*≥\s*/g, ` ${L.ge} `)
+    .replace(/\s*≈\s*/g, ` ${L.approx} `).replace(/~\s?(?=\d)/g, `${L.approx} `)
+    .replace(/\s*×\s*/g, ` ${L.times} `).replace(/(\d)\s+x\s+(?=\d)/g, `$1 ${L.times} `).replace(/(\w)\^(\w)/g, `$1 ${L.pow} $2`)
+    .replace(/[−-](?=\d)(?<=(?:^|\s)[−-])/g, `${L.minus} `).replace(/\s[−–—]\s/g, ", ").replace(/[−–—]/g, " ")
+    .replace(/\s&\s/g, ` ${L.and} `)
+    .replace(/[•▪◦#*_|~^`]/g, " ")
+    .replace(/\s+([,.;:!?])/g, "$1").replace(/([,;])\s*[,;]+/g, "$1").replace(/\s{2,}/g, " ").trim();
+  return s;
+}
 /* Les émojis des libellés (« 📚 Tout le chapitre », « 📘 Livre ») ne sont pas lus à voix haute. */
 const noEmoji = x => String(x).replace(/[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\uFE0F\u200D]/gu, "").replace(/\s{2,}/g, " ").trim();
 function speakUnits(key, units, lang, btn, onEnd) {
   if (!canSpeak) return;
   if (speakingId === key) { stopSpeak(); return; }
   stopSpeak();
-  units = units.filter(u => u.text || u.pause).map(u => u.text ? { ...u, text: spellAcr(noEmoji(u.text)) } : u).filter(u => u.text || u.pause);
+  units = units.filter(u => u.text || u.pause).map(u => u.text ? { ...u, text: spellAcr(noEmoji(u.text), lang) } : u).filter(u => u.text || u.pause);
   while (units.length && units[units.length - 1].pause) units.pop();
   if (!units.some(u => u.text)) units = [];
   if (!units.length) { if (onEnd) onEnd(); return; }
@@ -827,7 +873,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.0";
+const APP_VERSION = "11.1";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1392,7 +1438,7 @@ function exportAuto() {
     const langs = {};
     for (const lang of ["fr", "en"]) langs[lang] = { groups: autoGroups(lang) };
     // sigles lus lettre par lettre aussi en voiture (les marqueurs « ##PAUSE## » ne sont pas touchés)
-    for (const L of Object.values(langs)) for (const g of L.groups) for (const it of g.items) if (it.parts) it.parts = it.parts.map(x => /^##/.test(x) ? x : spellAcr(x));
+    for (const [lg, L] of Object.entries(langs)) for (const g of L.groups) for (const it of g.items) if (it.parts) it.parts = it.parts.map(x => /^##/.test(x) ? x : spellAcr(x, lg));
     nativeTTS.saveAuto(JSON.stringify({ v: 3, lang: getLang(), rate: ttsRate, pauseMs: 6000,
       voice: { fr: voicePref("fr"), en: voicePref("en") }, langs }));
   } catch (e) { console.error("exportAuto", e); }
@@ -1976,17 +2022,26 @@ function revLines(r, pane, lang) {
   return v[lang] || v.fr || v.en || [];   // Résumé Last Mile : texte en français uniquement
 }
 /** En-tête lu avant la fiche (« Chapitre n. Titre. Volet. ») ; le texte lui-même est lu depuis la page. */
+/** Ce que la voix dit pour annoncer un volet (pas le libellé du bouton : ni émoji, ni « Tout le chapitre », ni « Livre : Summary »).
+ *  Vide = rien d'annoncé (le Résumé vient juste après le titre du chapitre). */
+const PANE_SAY = {
+  fr: { sum: "", all: "", audio: "", tips: "Pour préparer l'examen.", mem: "À retenir.", book: "Le résumé du livre.", bsum: "Le résumé du livre.", bess: "L'essentiel du livre pour l'examen." },
+  en: { sum: "", all: "", audio: "", tips: "Preparing for the exam.", mem: "Key points to remember.", book: "The book's summary.", bsum: "The book's summary.", bess: "The book's study essentials." },
+};
+const paneSay = (p, l) => { const m = PANE_SAY[l === "fr" ? "fr" : "en"]; return p in m ? m[p] : null; };
 /** En-tête lu avant la fiche, surligné à l'écran comme le reste : le titre de la carte (« CH_13 Gestion… »)
  *  puis le bouton du volet affiché (« Tout le chapitre »). Lecture dans l'autre langue : en-tête lu sans surlignage. */
 function revIntro(d, r, pane, l) {
   const title = d.querySelector("summary .ch-title"), btn = d.querySelector(`[data-revpane="${pane}"]`);
   if (l !== getLang() || !title || !title.textContent.trim()) return [revSpeech(r, pane, l)];
-  return [{ el: title, prefix: (r.lms ? (l === "fr" ? "Domaine " : "Domain ") : (l === "fr" ? "Chapitre " : "Chapter ")) + r.id + "." }, btn && noEmoji(btn.textContent) ? { el: btn } : paneTitle(pane, l)];
+  const say = paneSay(pane, l);
+  return [{ el: title, prefix: (r.lms ? (l === "fr" ? "Domaine " : "Domain ") : (l === "fr" ? "Chapitre " : "Chapter ")) + r.id + "." },
+    say === null ? paneTitle(pane, l) : btn ? { el: btn, say } : say];
 }
 function revSpeech(r, pane, lang) {
-  if (r.lms) return joinSpeech([(lang === "fr" ? "Domaine " : "Domain ") + r.id, t("domain." + r.id, {}, lang), t("rev.pane." + pane, {}, lang)]);
+  if (r.lms) { const say = paneSay(pane, lang); return joinSpeech([(lang === "fr" ? "Domaine " : "Domain ") + r.id, t("domain." + r.id, {}, lang), say === null ? t("rev.pane." + pane, {}, lang) : say]); }
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
-  const head = paneTitle(pane, lang);
+  const say = paneSay(pane, lang), head = say === null ? paneTitle(pane, lang) : say;
   return joinSpeech([(lang === "fr" ? "Chapitre " : "Chapter ") + r.id, title, head]);
 }
 /** Volets d'un chapitre de la Révision fusionnée : fiche (Résumé, Préparer l'examen, À mémoriser), puis texte du livre. */
@@ -1996,7 +2051,7 @@ const paneTitle = (p, lang) => t(BOOK_PANES.includes(p) ? "rev.pane.book." + p :
 function revPaneHtml(r, pane, lang) {
   if (pane === "all") return allPanes(r, lang).map(p => {
     const inner = revPaneHtml(r, p, lang);
-    return inner.replace(/<[^>]+>/g, "").trim() ? `<h3 class="rev-part${BOOK_PANES.includes(p) ? " rev-part-book" : ""}">${esc(paneTitle(p, lang))}</h3>${inner}` : "";
+    return inner.replace(/<[^>]+>/g, "").trim() ? `<h3 class="rev-part${BOOK_PANES.includes(p) ? " rev-part-book" : ""}" data-say="${esc(paneSay(p, lang) ?? "")}">${esc(paneTitle(p, lang))}</h3>${inner}` : "";
   }).join("");
   if (pane === "sum" || pane === "audio" || pane === "bsum" || pane === "bess") {
     // Lignes « ## » = sous-titre, « - » = puce (regroupées en liste), sinon paragraphe.
@@ -2090,7 +2145,7 @@ function renderRevision(sec = "revision") {
         box.innerHTML = revPaneHtml(r, pane, l); box.lang = l;
         restore = () => { if (box.isConnected && (paneOf(id)) === pane) { box.innerHTML = revPaneHtml(r, pane, getLang()); box.removeAttribute("lang"); } };
       }
-      const parts = [...revIntro(d, r, pane, l), ...[...box.querySelectorAll("h3, h4, p, li")].map(el => ({ el }))];
+      const parts = [...revIntro(d, r, pane, l), ...[...box.querySelectorAll("h3, h4, p, li")].map(el => el.matches("h3[data-say]") ? { el, say: el.dataset.say } : { el })];
       speakUnits(k, speechUnits(parts, l), l, b, restore);
     });
   });

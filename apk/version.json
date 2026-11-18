@@ -1,7 +1,7 @@
 {
- "versionCode": 99,
- "versionName": "11.5",
+ "versionCode": 100,
+ "versionName": "11.6",
  "apk": "cissp-training.apk",
- "notes_fr": "Révision CISSP : nom complet des chapitres affiché et annoncé au début de la lecture, aussi en voiture (Domaine N, nom ; Chapitre N, nom).",
- "notes": "CISSP Review: full chapter names shown and announced when reading starts, also in the car (Domain N, name; Chapter N, name)."
+ "notes_fr": "Android Auto : la barre de lecture affiche un temps estimé (minutes) au lieu du nombre de phrases, et « ⏱ X min restantes » sous le titre. L'estimation s'ajuste à la vitesse réelle de ta voix.",
+ "notes": "Android Auto: the progress bar shows an estimated time (minutes) instead of the number of sentences, plus \"⏱ X min left\" under the title. The estimate adapts to your voice's real speed."
 }

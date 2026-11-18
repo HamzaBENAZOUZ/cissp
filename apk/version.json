@@ -1,7 +1,7 @@
 {
- "versionCode": 98,
- "versionName": "11.4",
+ "versionCode": 99,
+ "versionName": "11.5",
  "apk": "cissp-training.apk",
- "notes_fr": "Révision CISSP par domaine : un seul onglet pour les 8 domaines. Pour chaque domaine, la fiche Last Mile puis ses chapitres (fiche + livre) à la file, avec « Lire tout le domaine ». Même ordre en voiture.",
- "notes": "CISSP Review by domain: one tab for the 8 domains. For each domain, the Last Mile sheet, then its chapters (sheet + book) in a row, with \"Listen to whole domain\". Same order in the car."
+ "notes_fr": "Révision CISSP : nom complet des chapitres affiché et annoncé au début de la lecture, aussi en voiture (Domaine N, nom ; Chapitre N, nom).",
+ "notes": "CISSP Review: full chapter names shown and announced when reading starts, also in the car (Domain N, name; Chapter N, name)."
 }

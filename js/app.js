@@ -873,7 +873,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.4";
+const APP_VERSION = "11.5";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1462,11 +1462,13 @@ function autoGroups(lang) {
     // chapitres (fiche puis livre). La voiture enchaîne les éléments : tout un domaine se lit à la file, puis le suivant.
     const lmsItem = r => { const au = r.audio && r.audio[lang];
       return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: "D" + r.id + " · " + t("domain." + r.id, {}, lang),
-        subtitle: t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; };
+        subtitle: t("lms.tab", {}, lang), lang,
+        parts: [(fr ? "Domaine " : "Domain ") + r.id + ", " + t("domain." + r.id, {}, lang) + ". " + t("lms.tab", {}, lang) + ".", ...(au ? lines(r, ["audio"]) : lines(r, REV_PANES))] }; };
     const chItem = r => { const au = r.audio && r.audio[lang], bk = bookLines(r.id);
-      return { key: "revbook-" + r.id + "-" + lang + (au ? "-audio" : "") + (bk.length ? "-book" : ""), title: "CH" + r.id,
-        subtitle: chTitle(r.id) + " · " + (fr ? "fiche" : "sheet") + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
-        parts: [...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; };
+      return { key: "revbook-" + r.id + "-" + lang + (au ? "-audio" : "") + (bk.length ? "-book" : ""), title: "CH" + r.id + " · " + chTitle(r.id),
+        subtitle: "D" + ((chById(r.id) || {}).domain || "") + " · " + (fr ? "fiche" : "sheet") + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
+        // le nom complet du chapitre est annoncé au début de la lecture
+        parts: [(fr ? "Chapitre " : "Chapter ") + r.id + ", " + chTitle(r.id) + ".", ...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; };
     groups.push({ title: t("rev.tabAll", {}, lang), subtitle: fr ? "8 domaines · Last Mile + chapitres" : "8 domains · Last Mile + chapters",
       items: DOMAIN_IDS.flatMap(d => [...LMSUM.filter(r => r.id === d).map(lmsItem),
         ...REVISION.filter(r => (chById(r.id) || {}).domain === d).map(chItem)]) });
@@ -2092,7 +2094,7 @@ function renderRevision() {
     const pane = paneOf(r), c = r.lms ? null : chById(r.id);
     return `
     <details class="rev-card${r.lms ? " rev-card-lms" : ""}" data-rev="${r.lms ? "L" : ""}${r.id}" ${revOpen.has(revKey(r)) ? "open" : ""}>
-      <summary>${r.lms ? `<span class="ch-num mono">Last Mile</span> <span class="ch-title">${esc(t("rev.lmsCard", { d: r.id }))}</span>`
+      <summary>${r.lms ? `<span class="ch-num mono">Last Mile</span> <span class="ch-title">${esc(domainName(r.id, "cissp"))}</span>`
         : `<span class="ch-num mono">CH${r.id}</span> <span class="ch-title">${esc(chTitle(c) || "")}</span>`}</summary>
       <div class="rev-body">
         <div class="rev-tools">

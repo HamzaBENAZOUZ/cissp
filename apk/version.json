@@ -1,7 +1,7 @@
 {
- "versionCode": 97,
- "versionName": "11.3",
+ "versionCode": 98,
+ "versionName": "11.4",
  "apk": "cissp-training.apk",
- "notes_fr": "Android Auto : Révision et Livre CISSP fusionnés, comme sur le site. Une seule liste « Révision + Livre CISSP » : chaque chapitre lit la fiche puis le texte du livre.",
- "notes": "Android Auto: CISSP Review and Book merged, as on the site. One list \"CISSP Review + Book\": each chapter reads the sheet, then the book text."
+ "notes_fr": "Révision CISSP par domaine : un seul onglet pour les 8 domaines. Pour chaque domaine, la fiche Last Mile puis ses chapitres (fiche + livre) à la file, avec « Lire tout le domaine ». Même ordre en voiture.",
+ "notes": "CISSP Review by domain: one tab for the 8 domains. For each domain, the Last Mile sheet, then its chapters (sheet + book) in a row, with \"Listen to whole domain\". Same order in the car."
 }

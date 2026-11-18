@@ -778,3 +778,7 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tts-bar.in-topbar .tts-voice { max-width: 170px; height: 26px; padding: 0 6px; font-size: .74rem; }
 /* écran moyen : la barre passe sur sa propre petite ligne sous le logo et les boutons de l'en-tête */
 @media (max-width: 1499px) { .tts-bar.in-topbar { order: 3; } }
+/* Révision CISSP par domaine (11.4) : fiche Last Mile en tête de chaque domaine, titres de chapitre discrets */
+.rev-card-lms { border-left: 3px solid var(--accent, var(--green)); }
+.rev-card > summary .ch-title { min-width: 0; }
+section.domain[data-revdom] .rev-card:not(.rev-card-lms) > summary .ch-title { color: var(--muted); font-size: .92em; }

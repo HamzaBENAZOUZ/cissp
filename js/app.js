@@ -27,7 +27,7 @@ const state = {
   attempts: [], latest: new Map(),
   quiz: null, timer: null, lastResult: null,
   view: "boot", authMode: "login",
-  section: (() => { try { const v = localStorage.getItem("cissp-section"); return v === "book" ? "revision" : SECTIONS.includes(v) ? v : "guide"; } catch { return "guide"; } })(),
+  section: (() => { try { const v = localStorage.getItem("cissp-section"); return v === "book" || v === "lmsum" ? "revision" : SECTIONS.includes(v) ? v : "guide"; } catch { return "guide"; } })(),
 };
 
 // ------------------------------------------------------------------ utils
@@ -809,7 +809,7 @@ const secChapters = () => state.chapters.filter(c => secOf(c.id) === state.secti
 const secQuestions = () => state.questions.filter(q => secOf(q.chapter_id) === state.section);
 // « revision » : fiches de révision (js/revision.js), sans questions ; visible dès que le CISSP est chargé.
 // « book » : sections Summary / Study Essentials du livre (table cissp_book_notes), visible si la table est remplie.
-const hasSection = sec => (sec === "improve" || sec === "search") ? state.questions.length > 0 : (sec === "revision" || sec === "lmsum") ? state.chapters.some(c => c.id <= 100)
+const hasSection = sec => (sec === "improve" || sec === "search") ? state.questions.length > 0 : sec === "lmsum" ? false : sec === "revision" ? state.chapters.some(c => c.id <= 100)
   : sec === "book" ? false : state.chapters.some(c => secOf(c.id) === sec);
 const hasCcsp = () => hasSection("ccsp-guide") || hasSection("ccsp-practice");
 /** Nom d'un domaine, selon la certification (8 domaines CISSP, 6 domaines CCSP). */
@@ -873,7 +873,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.3";
+const APP_VERSION = "11.4";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1167,7 +1167,7 @@ function tvSync() {
     const { sec, r, pane, lang } = tvRev, c = chById(r.id);
     tv.link.send({
       t: "sheet", ui: getLang(), lang, key: sec + ":" + r.id + ":" + pane + ":" + lang,
-      kicker: sec === "lmsum" ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
+      kicker: sec === "lmsum" || r.lms ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
       title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, lang)}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
       pane: t("rev.pane." + pane, {}, lang), head: revSpeech(r, pane, lang),
       kind: ["sum", "bsum", "bess", "all"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
@@ -1451,11 +1451,6 @@ function autoGroups(lang) {
     const clean = l => l.startsWith("## ") ? "§ " + l.slice(3) + "." : l.startsWith("- ") ? l.slice(2) : l;
     const lines = (r, panes, L = lang) => panes.flatMap(p => ["§ " + t("rev.pane." + p, {}, L) + ".", ...revLines(r, p, L).map(clean)]);
     const groups = [];
-    groups.push({ title: t("lms.tab", {}, lang), subtitle: fr ? "8 domaines" : "8 domains",
-      // La voiture lit la version audio (écrite pour la synthèse vocale) quand elle existe.
-      items: LMSUM.map(r => { const au = r.audio && r.audio[lang];
-        return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: (fr ? "Domaine " : "Domain ") + r.id + " · " + t("domain." + r.id, {}, lang),
-          subtitle: au ? (fr ? "Version audio détaillée" : "Detailed audio version") : t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; }) });
     const chTitle = id => { const c = chById(id); return c ? (fr && c.title_fr ? c.title_fr : c.title) : ""; };
     // Révision + Livre CISSP fusionnés (comme sur le site, 11.3) : un seul élément par chapitre, qui lit la fiche
     // (version audio si elle existe, sinon Résumé / Préparer l'examen / À mémoriser) puis le texte du livre
@@ -1463,11 +1458,18 @@ function autoGroups(lang) {
     const bookLang = id => { const n = (state.notes && state.notes.get(id)) || {}; return lang === "fr" && !(n.summary_fr && n.summary_fr.length) ? "en" : lang; };
     const bookLines = id => hasBook(id) && bookLang(id) === lang
       ? BOOK_PANES.flatMap(p => { const ls = revLines({ id }, p, lang); return ls.length ? ["§ " + noEmoji(paneTitle(p, lang)) + ".", ...ls.map(clean)] : []; }) : [];
-    groups.push({ title: t("rev.tabMerged", {}, lang), subtitle: REVISION.length + (fr ? " chapitres · fiche + livre" : " chapters · sheet + book"),
-      items: REVISION.map(r => { const au = r.audio && r.audio[lang], bk = bookLines(r.id);
-        return { key: "revbook-" + r.id + "-" + lang + (au ? "-audio" : "") + (bk.length ? "-book" : ""), title: (fr ? "Chapitre " : "Chapter ") + r.id + " · " + chTitle(r.id),
-          subtitle: (au ? (fr ? "Version audio" : "Audio version") : (fr ? "Fiche" : "Sheet")) + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
-          parts: [...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; }) });
+    // Révision CISSP par domaine (11.4) : une seule liste, domaine par domaine : la fiche Last Mile du domaine puis ses
+    // chapitres (fiche puis livre). La voiture enchaîne les éléments : tout un domaine se lit à la file, puis le suivant.
+    const lmsItem = r => { const au = r.audio && r.audio[lang];
+      return { key: "lms-" + r.id + "-" + lang + (au ? "-audio" : ""), title: "D" + r.id + " · " + t("domain." + r.id, {}, lang),
+        subtitle: t("lms.tab", {}, lang), lang, parts: au ? lines(r, ["audio"]) : lines(r, REV_PANES) }; };
+    const chItem = r => { const au = r.audio && r.audio[lang], bk = bookLines(r.id);
+      return { key: "revbook-" + r.id + "-" + lang + (au ? "-audio" : "") + (bk.length ? "-book" : ""), title: "CH" + r.id,
+        subtitle: chTitle(r.id) + " · " + (fr ? "fiche" : "sheet") + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
+        parts: [...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; };
+    groups.push({ title: t("rev.tabAll", {}, lang), subtitle: fr ? "8 domaines · Last Mile + chapitres" : "8 domains · Last Mile + chapters",
+      items: DOMAIN_IDS.flatMap(d => [...LMSUM.filter(r => r.id === d).map(lmsItem),
+        ...REVISION.filter(r => (chById(r.id) || {}).domain === d).map(chItem)]) });
     // Chapitres du livre dont le texte n'existe pas dans la langue de l'appli (ex. pas encore traduit) : liste à part, en anglais.
     if (state.notes && state.notes.size) {
       const ids = [...state.notes.keys()].sort((a, b) => a - b).filter(id => bookLang(id) !== lang || !REVISION.some(r => r.id === id));
@@ -1838,8 +1840,8 @@ function savedPanel() {
 /** Une seule rangée d'onglets : CISSP / CISSP Practice / CISSP Last Mile / Révision CISSP
  *  (seulement ceux qui ont du contenu). Le chiffre est le nombre de questions (de fiches pour la révision). */
 function secTabs(sec) {
-  const nIn = s => s === "search" ? state.questions.length : s === "improve" ? mistakes().length : s === "revision" ? REVISION.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
-  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tabMerged"),
+  const nIn = s => s === "search" ? state.questions.length : s === "improve" ? mistakes().length : s === "revision" ? DOMAIN_IDS.length : s === "lmsum" ? LMSUM.length : s === "book" ? state.notes.size : state.questions.filter(q => secOf(q.chapter_id) === s).length;
+  const SEC_NAMES = { guide: "CISSP", practice: "CISSP Practice", lastmile: "CISSP Last Mile", isc2: t("isc2.tab"), lmsum: t("lms.tab"), revision: t("rev.tabAll"),
     improve: getLang() === "fr" ? "Axes d'amélioration" : "Improvement areas",
     search: getLang() === "fr" ? "🔎 Rechercher" : "🔎 Search",
   };
@@ -2051,7 +2053,7 @@ function revSpeech(r, pane, lang) {
 }
 /** Volets d'un chapitre de la Révision fusionnée : fiche (Résumé, Préparer l'examen, À mémoriser), puis texte du livre. */
 const hasBook = id => !!(state.notes && state.notes.get(id));
-const allPanes = (r, lang) => [...REV_PANES, ...(hasBook(r.id) ? BOOK_PANES : [])];
+const allPanes = (r, lang) => [...REV_PANES, ...(!r.lms && hasBook(r.id) ? BOOK_PANES : [])];
 const paneTitle = (p, lang) => t(BOOK_PANES.includes(p) ? "rev.pane.book." + p : "rev.pane." + p, {}, lang);
 function revPaneHtml(r, pane, lang) {
   if (pane === "all") return allPanes(r, lang).map(p => {
@@ -2072,87 +2074,97 @@ function revPaneHtml(r, pane, lang) {
   }
   return `<ul class="rev-list">${revLines(r, pane, lang).map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
 }
-function renderRevision(sec = "revision") {
-  const lang = getLang(), isBook = sec === "book", isLms = sec === "lmsum";
-  const PANES = isBook ? BOOK_PANES : REV_PANES;
-  const ITEMS = isBook ? [...state.notes.keys()].sort((a, b) => a - b).map(id => ({ id }))
-    : isLms ? LMSUM.map(r => ({ ...r, lms: true })) : REVISION;
-  const key = id => sec + ":" + id;
-  // Révision fusionnée (10.8) : pour chaque chapitre, la fiche ET le texte du livre (ex-onglet « Livre CISSP »), plus « Tout ».
-  const panesOf = r => {
-    if (isBook || isLms) return r && r.audio && r.audio[lang] ? [...PANES, "audio"] : PANES;
-    return [...PANES, ...(r && r.audio && r.audio[lang] ? ["audio"] : []), ...(r && hasBook(r.id) ? BOOK_PANES : []), "all"];
-  };
-  const paneBtn = (p, pane) => `<button class="seg-btn${BOOK_PANES.includes(p) ? " seg-book" : ""}" data-revpane="${p}" aria-pressed="${p === pane}">${esc(isBook ? t("rev.pane." + p) : paneTitle(p, lang))}</button>`;
-  const paneOf = id => { const P = panesOf(ITEMS.find(x => x.id === id)); const p = revOpen.get(key(id)); return P.includes(p) ? p : P[0]; };
+/* Révision CISSP par domaine (11.4) : pour chacun des 8 domaines, la fiche Résumé Last Mile du domaine, puis ses chapitres
+   à la file (fiche de révision + texte du livre). Remplace les onglets « Résumé Last Mile » et « Révision + Livre CISSP ».
+   « Lire tout le domaine » enchaîne toutes les fiches du domaine (volet « Tout » de chacune). */
+const revKey = r => "revision:" + (r.lms ? "L" : "") + r.id;
+function renderRevision() {
+  const sec = "revision", lang = getLang();
+  const LMS = LMSUM.map(r => ({ ...r, lms: true }));
+  const itemOf = d => { const v = d.dataset.rev; return v[0] === "L" ? LMS.find(x => x.id === +v.slice(1)) : REVISION.find(x => x.id === +v); };
+  const panesOf = r => [...REV_PANES, ...(r.audio && r.audio[lang] ? ["audio"] : []), ...(!r.lms && hasBook(r.id) ? BOOK_PANES : []), "all"];
+  const paneOf = r => { const P = panesOf(r), p = revOpen.get(revKey(r)); return P.includes(p) ? p : P[0]; };
+  const paneBtn = (p, pane, r) => `<button class="seg-btn${BOOK_PANES.includes(p) ? " seg-book" : ""}" data-revpane="${p}" aria-pressed="${p === pane}">${esc(p === "all" && r.lms ? t("rev.pane.allLms") : paneTitle(p, lang))}</button>`;
+  const speakBtns = (attr, fr, en) => `
+    ${canSpeak && !(lang === "fr" && canSpeakFr) ? `<button class="btn btn-ghost btn-xs btn-speak" ${attr}="en" lang="en" title="${esc(en)}">🔊 Listen</button>` : ""}
+    ${canSpeakFr && lang === "fr" ? `<button class="btn btn-ghost btn-xs btn-speak" ${attr}="fr" lang="fr" title="${esc(fr)}">🔊 Lire</button>` : ""}`;
   const card = r => {
-    const c = chById(r.id), pane = paneOf(r.id);
+    const pane = paneOf(r), c = r.lms ? null : chById(r.id);
     return `
-    <details class="rev-card" data-rev="${r.id}" ${revOpen.has(key(r.id)) ? "open" : ""}>
-      <summary>${isLms ? `<span class="ch-num mono">D${r.id}</span> <span class="ch-title">${esc(domainName(r.id, "cissp"))}</span>`
-        : `<span class="ch-num mono">${chLabel(r.id)}</span> <span class="ch-title">${esc(chTitle(c) || "")}</span>`}</summary>
+    <details class="rev-card${r.lms ? " rev-card-lms" : ""}" data-rev="${r.lms ? "L" : ""}${r.id}" ${revOpen.has(revKey(r)) ? "open" : ""}>
+      <summary>${r.lms ? `<span class="ch-num mono">Last Mile</span> <span class="ch-title">${esc(t("rev.lmsCard", { d: r.id }))}</span>`
+        : `<span class="ch-num mono">CH${r.id}</span> <span class="ch-title">${esc(chTitle(c) || "")}</span>`}</summary>
       <div class="rev-body">
         <div class="rev-tools">
-          <div class="seg rev-panes" role="group">
-            ${panesOf(r).map(p => paneBtn(p, pane)).join("")}
-          </div>
-          <div class="row rev-speak">
-            ${`
-            ${canSpeak && !(lang === "fr" && canSpeakFr) ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="en" lang="en" title="Read this sheet aloud in English (click again to stop)">🔊 Listen</button>` : ""}
-            ${canSpeakFr && lang === "fr" ? `<button class="btn btn-ghost btn-xs btn-speak" data-revspeak="fr" lang="fr" title="Lire cette fiche en français (cliquer à nouveau pour arrêter)">🔊 Lire</button>` : ""}`}
-          </div>
+          <div class="seg rev-panes" role="group">${panesOf(r).map(p => paneBtn(p, pane, r)).join("")}</div>
+          <div class="row rev-speak">${speakBtns("data-revspeak", "Lire cette fiche en français (cliquer à nouveau pour arrêter)", "Read this sheet aloud in English (click again to stop)")}</div>
         </div>
         <div class="rev-pane">${revPaneHtml(r, pane, lang)}</div>
       </div>
     </details>`;
   };
-  const blocks = isLms ? `<section class="domain"><div class="rev-grid">${ITEMS.map(card).join("")}</div></section>` : DOMAIN_IDS.map(d => {
-    const rs = ITEMS.filter(r => (chById(r.id) || {}).domain === d);
+  const blocks = DOMAIN_IDS.map(d => {
+    const rs = [...LMS.filter(r => r.id === d), ...REVISION.filter(r => (chById(r.id) || {}).domain === d)];
     if (!rs.length) return "";
-    return `<section class="domain"><div class="domain-head"><h2><span class="mono accent">D${d}</span> ${esc(domainName(d, "cissp"))}</h2></div>
+    return `<section class="domain" data-revdom="${d}"><div class="domain-head"><h2><span class="mono accent">D${d}</span> ${esc(domainName(d, "cissp"))}</h2>
+        <div class="row rev-speak">${speakBtns("data-domspeak", "Lire tout le domaine : Last Mile puis chaque chapitre (cliquer à nouveau pour arrêter)", "Read the whole domain: Last Mile, then each chapter (click again to stop)")
+          .replace(/🔊 Lire</, "🔊 " + esc(t("rev.readDomain", {}, "fr")) + "<").replace(/🔊 Listen</, "🔊 " + esc(t("rev.readDomain", {}, "en")) + "<")}</div></div>
       <div class="rev-grid">${rs.map(card).join("")}</div></section>`;
   }).join("");
   app.innerHTML = `
   <div id="offline-slot"></div>
   <section class="hero">
-    <p class="mono kicker">&gt; root@cissp:~$ ./${isBook ? "book" : isLms ? "last-mile-summary" : "review"} --lang=${lang}</p>
-    <h1 class="glitch" data-text="${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review + Book"}">${isBook ? "CISSP Book" : isLms ? "Last Mile Summary" : "CISSP Review + Book"}</h1>
+    <p class="mono kicker">&gt; root@cissp:~$ ./review --by-domain --lang=${lang}</p>
+    <h1 class="glitch" data-text="CISSP Review">CISSP Review</h1>
     ${secTabs(sec)}
-    <p class="muted">${esc(t(isBook ? "book.sub" : isLms ? "lms.sub" : "rev.subMerged", { n: ITEMS.length }))}</p>
+    <p class="muted">${esc(t("rev.subDomains", { n: REVISION.length }))}</p>
     <div class="row"><button class="btn btn-ghost btn-sm" id="rev-open-all">${esc(t("rev.openAll"))}</button>
       <button class="btn btn-ghost btn-sm" id="rev-close-all">${esc(t("rev.closeAll"))}</button></div>
   </section>
   ${blocks}`;
   app.querySelectorAll("[data-section]").forEach(b => b.onclick = () => { stopSpeak(); setSection(b.dataset.section); });
+  const setPane = (d, r, pane, l = getLang()) => {
+    revOpen.set(revKey(r), pane);
+    d.querySelectorAll("[data-revpane]").forEach(x => x.setAttribute("aria-pressed", x.dataset.revpane === pane));
+    const box = d.querySelector(".rev-pane"); box.innerHTML = revPaneHtml(r, pane, l);
+    if (l !== getLang()) box.lang = l; else box.removeAttribute("lang");
+  };
+  const boxParts = d => [...d.querySelectorAll(".rev-pane h3, .rev-pane h4, .rev-pane p, .rev-pane li")].map(el => el.matches("h3[data-say]") ? { el, say: el.dataset.say } : { el });
   app.querySelectorAll(".rev-card").forEach(d => {
-    const id = +d.dataset.rev, r = ITEMS.find(x => x.id === id);
-    const shownLang = () => getLang();
+    const r = itemOf(d);
     d.addEventListener("toggle", () => {
-      if (d.open) { if (!revOpen.has(key(id))) revOpen.set(key(id), PANES[0]); tvSheet(sec, r, paneOf(id), shownLang()); }
-      else { revOpen.delete(key(id)); if (tvRev && tvRev.sec === sec && tvRev.r.id === id) tvSheet(sec, null); }
+      if (d.open) { if (!revOpen.has(revKey(r))) revOpen.set(revKey(r), panesOf(r)[0]); tvSheet(sec, r, paneOf(r), getLang()); }
+      else { revOpen.delete(revKey(r)); if (tvRev && tvRev.sec === sec && tvRev.r.id === r.id && !!tvRev.r.lms === !!r.lms) tvSheet(sec, null); }
     });
     d.querySelectorAll("[data-revpane]").forEach(b => b.onclick = () => {
-      const pane = b.dataset.revpane; revOpen.set(key(id), pane); stopSpeak(); tvSheet(sec, r, pane, shownLang());
-      d.querySelectorAll("[data-revpane]").forEach(x => x.setAttribute("aria-pressed", x === b));
-      d.querySelector(".rev-pane").innerHTML = revPaneHtml(r, pane, getLang());
+      stopSpeak(); setPane(d, r, b.dataset.revpane); tvSheet(sec, r, b.dataset.revpane, getLang());
     });
     d.querySelectorAll("[data-revspeak]").forEach(b => b.onclick = e => {
       e.preventDefault();
-      const l = b.dataset.revspeak, pane = paneOf(id), k = `${sec}:${id}:${pane}:${l}`;
+      const l = b.dataset.revspeak, pane = paneOf(r), k = `${revKey(r)}:${pane}:${l}`;
       if (tv && tv.ok) { tvSheet(sec, r, pane, l); tvSpeak("sheet"); return; }   // télé connectée : lecture sur la télé
       if (speakingId === k) { stopSpeak(); return; }
       stopSpeak();
-      // Lecture dans l'autre langue (Listen alors que le site est en français) : on affiche le texte lu le temps
-      // de la lecture, pour pouvoir le suivre, puis on remet la langue du site.
-      const box = d.querySelector(".rev-pane"), shown = getLang();
+      // Lecture dans l'autre langue : le texte lu est affiché le temps de la lecture, puis on remet la langue du site.
       let restore = null;
-      if (l !== shown) {
-        box.innerHTML = revPaneHtml(r, pane, l); box.lang = l;
-        restore = () => { if (box.isConnected && (paneOf(id)) === pane) { box.innerHTML = revPaneHtml(r, pane, getLang()); box.removeAttribute("lang"); } };
-      }
-      const parts = [...revIntro(d, r, pane, l), ...[...box.querySelectorAll("h3, h4, p, li")].map(el => el.matches("h3[data-say]") ? { el, say: el.dataset.say } : { el })];
-      speakUnits(k, speechUnits(parts, l), l, b, restore);
+      if (l !== getLang()) { setPane(d, r, pane, l); restore = () => { if (d.isConnected && paneOf(r) === pane) setPane(d, r, pane); }; }
+      speakUnits(k, speechUnits([...revIntro(d, r, pane, l), ...boxParts(d)], l), l, b, restore);
     });
+  });
+  // « Lire tout le domaine » : chaque fiche du domaine est ouverte sur « Tout », puis tout est lu à la suite (avec surlignage).
+  app.querySelectorAll("[data-domspeak]").forEach(b => b.onclick = e => {
+    e.preventDefault();
+    const sect = b.closest("[data-revdom]"), dom = +sect.dataset.revdom, l = b.dataset.domspeak, k = `revision:D${dom}:${l}`;
+    if (speakingId === k) { stopSpeak(); return; }
+    stopSpeak();
+    const cards = [...sect.querySelectorAll(".rev-card")], parts = [];
+    for (const d of cards) {
+      const r = itemOf(d);
+      d.open = true; setPane(d, r, "all", l);
+      parts.push(...revIntro(d, r, "all", l), ...boxParts(d));
+    }
+    const restore = l !== getLang() ? () => cards.forEach(d => { if (d.isConnected) setPane(d, itemOf(d), "all"); }) : null;
+    speakUnits(k, speechUnits(parts, l), l, b, restore);
   });
   const all = open => () => app.querySelectorAll(".rev-card").forEach(d => { d.open = open; });
   document.getElementById("rev-open-all").onclick = all(true);
@@ -2330,7 +2342,8 @@ function renderHome() {
   if (state.section === "improve") { renderImprove(); return; }
   if (state.section === "search") { renderSearch(); return; }
   if (state.section === "book") state.section = "revision";   // Livre CISSP fusionné dans Révision (10.8)
-  if (state.section === "revision" || state.section === "lmsum") { renderRevision(state.section); return; }
+  if (state.section === "lmsum") state.section = "revision";   // Résumé Last Mile rangé dans Révision CISSP par domaine (11.4)
+  if (state.section === "revision") { renderRevision(); return; }
   const sec = state.section, cert = certOf(sec), CERT = cert.toUpperCase();
   const kind = sec.endsWith("practice") ? "practice" : "guide";
   const inSec = q => secOf(q.chapter_id) === sec;

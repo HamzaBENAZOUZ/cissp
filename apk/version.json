@@ -1,7 +1,7 @@
 {
- "versionCode": 101,
- "versionName": "11.7",
+ "versionCode": 102,
+ "versionName": "11.8",
  "apk": "cissp-training.apk",
- "notes_fr": "Temps de lecture estimé affiché devant chaque bouton « Lire » (fiche, chapitre, tout le domaine) ; il suit la vitesse de lecture choisie.",
- "notes": "Estimated reading time shown before each \"Listen\" button (sheet, chapter, whole domain); it follows the chosen reading speed."
+ "notes_fr": "Lire tout le domaine : avec la télé connectée, la lecture se fait uniquement sur la télé.",
+ "notes": "Read the whole domain: with the TV connected, it is read on the TV only."
 }

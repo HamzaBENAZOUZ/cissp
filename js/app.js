@@ -896,7 +896,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.7";
+const APP_VERSION = "11.8";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1177,6 +1177,9 @@ function tvDisconnect(silent) {
 let tvRev = null;   // fiche ouverte sur le téléphone : { sec, r, pane, lang }
 /** Fiche (Révision, Résumé Last Mile, Livre) ouverte ou changée sur le téléphone : on l'affiche aussi sur la télé. */
 function tvSheet(sec, r, pane, lang) { tvRev = r ? { sec, r, pane, lang } : null; tvSync(); }
+/** « Lire tout le domaine » avec la télé connectée : tout le domaine (Last Mile puis chapitres, volet « Tout ») est
+ *  envoyé à la télé comme une seule fiche, et c'est elle qui le lit (le téléphone reste muet). */
+function tvDomain(sec, dom, rs, lang) { tvRev = { sec, dom, rs, lang }; tvSync(); }
 let tvHold = false;
 function tvHoldScreen(on) {
   if (on === tvHold || !nativeTTS || typeof nativeTTS.keepScreen !== "function") return;
@@ -1186,6 +1189,18 @@ function tvSync() {
   if (!tv || !tv.ok) { tvHoldScreen(false); return; }
   tvHoldScreen(state.view === "quiz");   // téléphone en veille = quiz figé et télé muette : on garde l'écran allumé
   const z = state.quiz;
+  if (state.view === "home" && tvRev && tvRev.sec === state.section && tvRev.dom) {
+    const { sec, dom, rs, lang } = tvRev;
+    // « # titre affiché\ttexte annoncé » : en-tête de chaque fiche (Last Mile du domaine, puis chaque chapitre)
+    const head = r => (r.lms ? `D${r.id} · ${t("lms.tab", {}, lang)}` : `${chLabel(r.id)} · ${chTitle(chById(r.id)) || ""}`) + "\t" + revSpeech(r, "all", lang);
+    tv.link.send({
+      t: "sheet", ui: getLang(), lang, key: sec + ":D" + dom + ":all:" + lang,
+      kicker: t("rev.tab"), title: `D${dom} · ${t("domain." + dom, {}, lang)}`, pane: t("rev.readDomain", {}, lang),
+      head: "",   // le domaine est annoncé par l'en-tête de sa fiche Last Mile (1re section)
+      kind: "mixed", lines: rs.flatMap(r => { const ls = revLines(r, "all", lang); return ls.length ? ["# " + head(r), ...ls] : []; }),
+    });
+    return;
+  }
   if (state.view === "home" && tvRev && tvRev.sec === state.section) {
     const { sec, r, pane, lang } = tvRev, c = chById(r.id);
     tv.link.send({
@@ -1283,7 +1298,9 @@ function tvRender() {
       const flush = () => { if (list.length) { body += `<ul class="rev-list">${list.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`; list = []; } };
       for (const l of m.lines) {
         if (l.startsWith("- ")) { list.push(l.slice(2)); continue; }
-        flush(); body += l.startsWith("## ") ? `<h4>${esc(l.slice(3))}</h4>` : `<p>${esc(l)}</p>`;
+        flush();
+        if (l.startsWith("# ")) { const [show, say] = l.slice(2).split("\t"); body += `<h3 class="tv-sheet-sec" data-say="${esc(say || show)}">${esc(show)}</h3>`; continue; }
+        body += l.startsWith("## ") ? `<h4>${esc(l.slice(3))}</h4>` : `<p>${esc(l)}</p>`;
       }
       flush();
     }
@@ -1434,7 +1451,7 @@ function tvRead(mode) {
   if (player) stopSpeak();
   if (m.t === "sheet") {
     const pane = app.querySelector(".tv-sheet .rev-pane"); if (!pane) return;
-    speakUnits("tv:" + m.key, speechUnits([m.head, ...[...pane.querySelectorAll("h4, p, li")].map(el => ({ el }))], m.lang), m.lang, btn);
+    speakUnits("tv:" + m.key, speechUnits([...(m.head ? [m.head] : []), ...[...pane.querySelectorAll("h3, h4, p, li")].map(el => el.dataset.say ? { el, say: el.dataset.say } : { el })], m.lang), m.lang, btn);
     return;
   }
   if (m.t !== "q") return;
@@ -2166,7 +2183,7 @@ function renderRevision() {
     const r = itemOf(d);
     d.addEventListener("toggle", () => {
       if (d.open) { if (!revOpen.has(revKey(r))) revOpen.set(revKey(r), panesOf(r)[0]); tvSheet(sec, r, paneOf(r), getLang()); }
-      else { revOpen.delete(revKey(r)); if (tvRev && tvRev.sec === sec && tvRev.r.id === r.id && !!tvRev.r.lms === !!r.lms) tvSheet(sec, null); }
+      else { revOpen.delete(revKey(r)); if (tvRev && tvRev.r && tvRev.sec === sec && tvRev.r.id === r.id && !!tvRev.r.lms === !!r.lms) tvSheet(sec, null); }
     });
     d.querySelectorAll("[data-revpane]").forEach(b => b.onclick = () => {
       stopSpeak(); setPane(d, r, b.dataset.revpane); tvSheet(sec, r, b.dataset.revpane, getLang()); cardEst(d);
@@ -2187,9 +2204,11 @@ function renderRevision() {
   app.querySelectorAll("[data-domspeak]").forEach(b => b.onclick = e => {
     e.preventDefault();
     const sect = b.closest("[data-revdom]"), dom = +sect.dataset.revdom, l = b.dataset.domspeak, k = `revision:D${dom}:${l}`;
+    const cards = [...sect.querySelectorAll(".rev-card")], parts = [];
+    // télé connectée : tout le domaine est lu sur la télé seulement (rien sur le téléphone)
+    if (tv && tv.ok) { stopSpeak(); tvDomain(sec, dom, cards.map(itemOf), l); tvSpeak("sheet"); return; }
     if (speakingId === k) { stopSpeak(); return; }
     stopSpeak();
-    const cards = [...sect.querySelectorAll(".rev-card")], parts = [];
     for (const d of cards) {
       const r = itemOf(d);
       d.open = true; setPane(d, r, "all", l);

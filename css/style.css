@@ -715,6 +715,8 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tv-sheet .tv-sheet-title { font-size: 2rem; margin: .2em 0 .6em; }
 .tv-sheet .rev-pane { padding: 28px 36px; font-size: 1.25rem; line-height: 1.55; }
 .tv-sheet .rev-pane h4 { font-size: 1.45rem; margin: 1.1em 0 .4em; }
+.tv-sheet .rev-pane h3.tv-sheet-sec { font-size: 1.7rem; margin: 1.6em 0 .3em; padding-top: .6em; border-top: 2px solid var(--line, rgba(127,127,127,.3)); }
+.tv-sheet .rev-pane h3.tv-sheet-sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
 /* Télé : barre de progression de la lecture, fine, en bas de l'écran */
 .tv-progress { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; height: 8px; background: color-mix(in srgb, var(--muted) 25%, transparent); }

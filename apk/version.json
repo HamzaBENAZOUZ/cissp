@@ -1,7 +1,7 @@
 {
- "versionCode": 103,
- "versionName": "11.9",
+ "versionCode": 104,
+ "versionName": "12.0",
  "apk": "cissp-training.apk",
- "notes_fr": "L'écran ne s'éteint plus pendant la lecture à voix haute (y compris entre deux phrases ou deux questions) ; il reste allumé 1 minute après la fin.",
- "notes": "The screen no longer turns off during read-aloud (including between sentences or questions); it stays on for 1 minute after reading ends."
+ "notes_fr": "Lecture en mode paysage : le texte des chapitres et des fiches s'adapte à la largeur de l'écran, en-tête et barre de lecture compacts.",
+ "notes": "Landscape reading: chapter and sheet text now fits the screen width, compact header and reading bar."
 }

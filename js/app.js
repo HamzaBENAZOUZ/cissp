@@ -251,6 +251,14 @@ function mediaTitle(btn, units) {
 /* PC (souris, écran large) : la barre de lecture est rangée dans l'en-tête, en haut de la page,
    au lieu de flotter par-dessus le contenu. Téléphone, tablette, appli et télé : barre flottante d'avant. */
 const DESK_BAR = window.matchMedia ? matchMedia("(hover: hover) and (pointer: fine) and (min-width: 900px)") : { matches: false };
+/* Hauteur réelle de l'en-tête (une ou deux lignes selon la largeur) : la barre de lecture se place juste dessous sur téléphone. */
+(function watchTopbar() {
+  const top = document.querySelector(".topbar");
+  if (!top) return;
+  const set = () => document.documentElement.style.setProperty("--topbar-h", Math.round(top.getBoundingClientRect().height) + "px");
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(top); else window.addEventListener("resize", set);
+})();
 function placeTtsBar(bar) {
   const top = document.querySelector(".topbar");
   const inTop = !!(DESK_BAR.matches && top && !document.body.classList.contains("tv-mode"));
@@ -896,7 +904,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "11.9";
+const APP_VERSION = "12.0";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;

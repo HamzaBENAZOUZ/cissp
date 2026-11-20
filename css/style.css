@@ -604,7 +604,7 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .tts-btn.tts-main { background: var(--grad); color: #fff; border: 0; min-width: 46px; height: 46px; }
 .tts-rate { min-width: 3.4em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .tts-pos { font-family: var(--mono); font-size: .78rem; color: var(--muted); padding: 0 4px; font-variant-numeric: tabular-nums; }
-@media (max-width: 560px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 60px); } }
+@media (max-width: 560px) { .tts-bar { top: calc(var(--topbar-h, 56px) + 4px); } }  /* --topbar-h : hauteur réelle de l'en-tête (app.js), qui peut tenir sur deux lignes */
 @media (orientation: landscape) and (max-height: 500px) { .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 8px); right: max(12px, env(safe-area-inset-right, 0px)); left: auto; transform: none; } }
 
 /* Barre de lecture : précédent / suivant et choix de la voix */
@@ -785,3 +785,37 @@ h1 { font-weight: 800; letter-spacing: -.015em; }
 .rev-card > summary .ch-title { min-width: 0; }
 /* Temps de lecture estimé devant les boutons « Lire » (11.7) */
 .read-est { font-size: .75rem; color: var(--muted); white-space: nowrap; align-self: center; margin-right: .1rem; }
+
+/* Téléphone en paysage / écran moyen (12.0) : l'en-tête ne doit jamais être plus large que l'écran.
+   Avant, entre 561 et ~850 px (téléphone couché), ses boutons dépassaient à droite : la page devenait plus
+   large que l'écran et le texte des fiches et des chapitres sortait sur le côté. */
+.topbar { min-width: 0; }
+.brand { min-width: 0; flex-shrink: 1; }
+.topbar-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+body { overflow-wrap: break-word; }
+.container { min-width: 0; }
+@media (max-width: 1000px) {
+  .brand-text { display: none; }
+  .topbar-right .user-label { display: none; }
+  .topbar-right { gap: 8px; }
+}
+/* écran bas (téléphone couché) : en-tête compact pour laisser la place au texte */
+@media (orientation: landscape) and (max-height: 500px) {
+  .topbar { padding: 6px 16px; }
+  .brand-logo { width: 36px; height: 36px; border-radius: 10px; }
+  .brand-logo img { width: 30px; }
+  .exam-pill { height: 30px; padding: 0 10px; }
+  .exam-pill .exam-txt { display: none; }
+  #btn-logout { padding: 5px 10px; }
+  .container { padding-top: 14px; }
+}
+/* barre de lecture compacte sur une seule ligne, à la hauteur de l'en-tête : elle ne cache plus le haut du texte */
+@media (orientation: landscape) and (max-height: 500px) {
+  .tts-bar { top: calc(env(safe-area-inset-top, 0px) + 5px); flex-wrap: nowrap; gap: 3px; padding: 3px 6px; border-radius: 999px; max-width: calc(100vw - 150px); }
+  .tts-bar .tts-ctl { gap: 3px; }
+  .tts-bar .tts-btn { min-width: 32px; height: 32px; padding: 0 7px; font-size: .95rem; }
+  .tts-bar .tts-btn.tts-main { min-width: 36px; height: 36px; }
+  .tts-bar .tts-rate { min-width: 2.8em; font-size: .85rem; }
+  .tts-bar .tts-pos { font-size: .72rem; }
+  .tts-bar .tts-voice { max-width: 150px; height: 32px; font-size: .78rem; min-width: 0; }
+}

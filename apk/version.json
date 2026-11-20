@@ -1,7 +1,7 @@
 {
- "versionCode": 102,
- "versionName": "11.8",
+ "versionCode": 103,
+ "versionName": "11.9",
  "apk": "cissp-training.apk",
- "notes_fr": "Lire tout le domaine : avec la télé connectée, la lecture se fait uniquement sur la télé.",
- "notes": "Read the whole domain: with the TV connected, it is read on the TV only."
+ "notes_fr": "L'écran ne s'éteint plus pendant la lecture à voix haute (y compris entre deux phrases ou deux questions) ; il reste allumé 1 minute après la fin.",
+ "notes": "The screen no longer turns off during read-aloud (including between sentences or questions); it stays on for 1 minute after reading ends."
 }

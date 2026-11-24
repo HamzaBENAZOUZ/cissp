@@ -1,7 +1,7 @@
 {
- "versionCode": 105,
- "versionName": "12.1",
+ "versionCode": 106,
+ "versionName": "12.2",
  "apk": "cissp-training.apk",
- "notes_fr": "Nouvel onglet Révision express 2 h : révision audio de dernière minute de tout le CISSP, en français et en anglais (en tête de Révision CISSP et en voiture).",
- "notes": "New Express review 2 h: last-minute audio review of the whole CISSP, in English and French (top of CISSP Review and in the car)."
+ "notes_fr": "Révision express 2 h : en français, les termes techniques sont gardés en anglais (due diligence, data owner, least privilege…).",
+ "notes": "Express review 2 h: the French version now keeps technical terms in English."
 }

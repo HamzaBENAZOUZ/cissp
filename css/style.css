@@ -819,3 +819,8 @@ body { overflow-wrap: break-word; }
   .tts-bar .tts-pos { font-size: .72rem; }
   .tts-bar .tts-voice { max-width: 150px; height: 32px; font-size: .78rem; min-width: 0; }
 }
+
+/* Révision express 2 h (12.1) : bloc en tête de la Révision CISSP */
+.domain-xp { border: 1px solid var(--accent, var(--green)); border-radius: 12px; padding: 12px; }
+.domain-xp > .muted { margin: 4px 0 10px; }
+.rev-card-xp { border-left: 3px solid var(--accent, var(--green)); }

@@ -6,7 +6,13 @@ import { REVAUDIO } from "./revision-audio.js";
 REVISION.forEach(r => { if (REVAUDIO[r.id]) r.audio = REVAUDIO[r.id]; });   // volet « Version audio » des chapitres
 import { LMSUM } from "./lastmile-summary.js";
 import { LMAUDIO } from "./lastmile-audio.js";
+import { EXPRESS } from "./express-audio.js";
 LMSUM.forEach(r => { if (LMAUDIO[r.id]) r.audio = LMAUDIO[r.id]; });   // volet « Version audio » (texte écrit pour la voix)
+/* Révision express (12.1) : environ 2 h d'écoute de dernière minute, FR et EN, en tête de la Révision CISSP.
+   id 0 = introduction, 1 à 8 = domaines, 9 = dernier quart d'heure. Un seul volet, « Version audio ». */
+const XP = EXPRESS.map(r => ({ ...r, x: true }));
+const xpTitle = (r, lang) => r.title ? (r.title[lang] || r.title.fr) : t("domain." + r.id, {}, lang);
+const xpNum = (r, lang) => r.id >= 1 && r.id <= 8 ? (lang === "fr" ? "Domaine " : "Domain ") + r.id + "." : "";
 
 /** Vrai dans l'application Android (pont vocal AndroidTTS fourni par l'APK). */
 const IN_APP = !!window.AndroidTTS;
@@ -904,7 +910,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "12.0";
+const APP_VERSION = "12.1";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
@@ -1200,12 +1206,12 @@ function tvSync() {
   if (state.view === "home" && tvRev && tvRev.sec === state.section && tvRev.dom) {
     const { sec, dom, rs, lang } = tvRev;
     // « # titre affiché\ttexte annoncé » : en-tête de chaque fiche (Last Mile du domaine, puis chaque chapitre)
-    const head = r => (r.lms ? `D${r.id} · ${t("lms.tab", {}, lang)}` : `${chLabel(r.id)} · ${chTitle(chById(r.id)) || ""}`) + "\t" + revSpeech(r, "all", lang);
+    const head = r => (r.x ? xpTitle(r, lang) : r.lms ? `D${r.id} · ${t("lms.tab", {}, lang)}` : `${chLabel(r.id)} · ${chTitle(chById(r.id)) || ""}`) + "\t" + revSpeech(r, "all", lang);
     tv.link.send({
       t: "sheet", ui: getLang(), lang, key: sec + ":D" + dom + ":all:" + lang,
-      kicker: t("rev.tab"), title: `D${dom} · ${t("domain." + dom, {}, lang)}`, pane: t("rev.readDomain", {}, lang),
+      kicker: t("rev.tab"), title: dom === "X" ? t("xp.title", {}, lang) : `D${dom} · ${t("domain." + dom, {}, lang)}`, pane: t(dom === "X" ? "xp.readAll" : "rev.readDomain", {}, lang),
       head: "",   // le domaine est annoncé par l'en-tête de sa fiche Last Mile (1re section)
-      kind: "mixed", lines: rs.flatMap(r => { const ls = revLines(r, "all", lang); return ls.length ? ["# " + head(r), ...ls] : []; }),
+      kind: "mixed", lines: rs.flatMap(r => { const ls = revLines(r, r.x ? "audio" : "all", lang); return ls.length ? ["# " + head(r), ...ls] : []; }),
     });
     return;
   }
@@ -1213,8 +1219,8 @@ function tvSync() {
     const { sec, r, pane, lang } = tvRev, c = chById(r.id);
     tv.link.send({
       t: "sheet", ui: getLang(), lang, key: sec + ":" + r.id + ":" + pane + ":" + lang,
-      kicker: sec === "lmsum" || r.lms ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
-      title: r.lms ? `D${r.id} · ${t("domain." + r.id, {}, lang)}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
+      kicker: r.x ? t("xp.title") : sec === "lmsum" || r.lms ? t("lms.tab") : sec === "book" ? t("book.tab") : t("rev.tab"),
+      title: r.x ? xpTitle(r, lang) : r.lms ? `D${r.id} · ${t("domain." + r.id, {}, lang)}` : `${chLabel(r.id)} · ${chTitle(c) || ""}`,
       pane: t("rev.pane." + pane, {}, lang), head: revSpeech(r, pane, lang),
       kind: ["sum", "bsum", "bess", "all"].includes(pane) ? "mixed" : "list", lines: revLines(r, pane, lang),
     });
@@ -1517,6 +1523,10 @@ function autoGroups(lang) {
         subtitle: "D" + ((chById(r.id) || {}).domain || "") + " · " + (fr ? "fiche" : "sheet") + (bk.length ? (fr ? " + livre" : " + book") : ""), lang,
         // le nom complet du chapitre est annoncé au début de la lecture
         parts: [(fr ? "Chapitre " : "Chapter ") + r.id + ", " + chTitle(r.id) + ".", ...(au ? lines(r, ["audio"]) : lines(r, REV_PANES)), ...bk] }; };
+    // Révision express (12.1) : environ 2 h, en premier dans la voiture
+    groups.push({ title: t("xp.title", {}, lang), subtitle: fr ? "Introduction, 8 domaines, dernier quart d'heure" : "Introduction, 8 domains, last quarter of an hour",
+      items: XP.filter(r => r.audio[lang] && r.audio[lang].length).map(r => ({ key: "xp-" + r.id + "-" + lang, title: (r.id >= 1 && r.id <= 8 ? "D" + r.id + " · " : "") + xpTitle(r, lang),
+        subtitle: t("xp.title", {}, lang), lang, parts: [joinSpeech([xpNum(r, lang), xpTitle(r, lang)]), ...revLines(r, "audio", lang).map(clean)] })) });
     groups.push({ title: t("rev.tabAll", {}, lang), subtitle: fr ? "8 domaines · Last Mile + chapitres" : "8 domains · Last Mile + chapters",
       items: DOMAIN_IDS.flatMap(d => [...LMSUM.filter(r => r.id === d).map(lmsItem),
         ...REVISION.filter(r => (chById(r.id) || {}).domain === d).map(chItem)]) });
@@ -2091,11 +2101,13 @@ const paneSay = (p, l) => { const m = PANE_SAY[l === "fr" ? "fr" : "en"]; return
 function revIntro(d, r, pane, l) {
   const title = d.querySelector("summary .ch-title"), btn = d.querySelector(`[data-revpane="${pane}"]`);
   if (l !== getLang() || !title || !title.textContent.trim()) return [revSpeech(r, pane, l)];
+  if (r.x) return [{ el: title, prefix: xpNum(r, l) }];   // révision express : titre seul, le texte annonce la suite
   const say = paneSay(pane, l);
   return [{ el: title, prefix: (r.lms ? (l === "fr" ? "Domaine " : "Domain ") : (l === "fr" ? "Chapitre " : "Chapter ")) + r.id + "." },
     say === null ? paneTitle(pane, l) : btn ? { el: btn, say } : say];
 }
 function revSpeech(r, pane, lang) {
+  if (r.x) return joinSpeech([xpNum(r, lang), xpTitle(r, lang)]);
   if (r.lms) { const say = paneSay(pane, lang); return joinSpeech([(lang === "fr" ? "Domaine " : "Domain ") + r.id, t("domain." + r.id, {}, lang), say === null ? t("rev.pane." + pane, {}, lang) : say]); }
   const c = chById(r.id), title = c ? (lang === "fr" && c.title_fr ? c.title_fr : c.title) : "";
   const say = paneSay(pane, lang), head = say === null ? paneTitle(pane, lang) : say;
@@ -2103,7 +2115,7 @@ function revSpeech(r, pane, lang) {
 }
 /** Volets d'un chapitre de la Révision fusionnée : fiche (Résumé, Préparer l'examen, À mémoriser), puis texte du livre. */
 const hasBook = id => !!(state.notes && state.notes.get(id));
-const allPanes = (r, lang) => [...REV_PANES, ...(!r.lms && hasBook(r.id) ? BOOK_PANES : [])];
+const allPanes = (r, lang) => r.x ? ["audio"] : [...REV_PANES, ...(!r.lms && hasBook(r.id) ? BOOK_PANES : [])];
 const paneTitle = (p, lang) => t(BOOK_PANES.includes(p) ? "rev.pane.book." + p : "rev.pane." + p, {}, lang);
 function revPaneHtml(r, pane, lang) {
   if (pane === "all") return allPanes(r, lang).map(p => {
@@ -2127,12 +2139,12 @@ function revPaneHtml(r, pane, lang) {
 /* Révision CISSP par domaine (11.4) : pour chacun des 8 domaines, la fiche Résumé Last Mile du domaine, puis ses chapitres
    à la file (fiche de révision + texte du livre). Remplace les onglets « Résumé Last Mile » et « Révision + Livre CISSP ».
    « Lire tout le domaine » enchaîne toutes les fiches du domaine (volet « Tout » de chacune). */
-const revKey = r => "revision:" + (r.lms ? "L" : "") + r.id;
+const revKey = r => "revision:" + (r.x ? "X" : r.lms ? "L" : "") + r.id;
 function renderRevision() {
   const sec = "revision", lang = getLang();
   const LMS = LMSUM.map(r => ({ ...r, lms: true }));
-  const itemOf = d => { const v = d.dataset.rev; return v[0] === "L" ? LMS.find(x => x.id === +v.slice(1)) : REVISION.find(x => x.id === +v); };
-  const panesOf = r => [...REV_PANES, ...(r.audio && r.audio[lang] ? ["audio"] : []), ...(!r.lms && hasBook(r.id) ? BOOK_PANES : []), "all"];
+  const itemOf = d => { const v = d.dataset.rev; return v[0] === "X" ? XP.find(x => x.id === +v.slice(1)) : v[0] === "L" ? LMS.find(x => x.id === +v.slice(1)) : REVISION.find(x => x.id === +v); };
+  const panesOf = r => r.x ? ["audio"] : [...REV_PANES, ...(r.audio && r.audio[lang] ? ["audio"] : []), ...(!r.lms && hasBook(r.id) ? BOOK_PANES : []), "all"];
   const paneOf = r => { const P = panesOf(r), p = revOpen.get(revKey(r)); return P.includes(p) ? p : P[0]; };
   const paneBtn = (p, pane, r) => `<button class="seg-btn${BOOK_PANES.includes(p) ? " seg-book" : ""}" data-revpane="${p}" aria-pressed="${p === pane}">${esc(p === "all" && r.lms ? t("rev.pane.allLms") : paneTitle(p, lang))}</button>`;
   const speakBtns = (attr, fr, en) => `
@@ -2141,8 +2153,9 @@ function renderRevision() {
   const card = r => {
     const pane = paneOf(r), c = r.lms ? null : chById(r.id);
     return `
-    <details class="rev-card${r.lms ? " rev-card-lms" : ""}" data-rev="${r.lms ? "L" : ""}${r.id}" ${revOpen.has(revKey(r)) ? "open" : ""}>
-      <summary>${r.lms ? `<span class="ch-num mono">Last Mile</span> <span class="ch-title">${esc(domainName(r.id, "cissp"))}</span>`
+    <details class="rev-card${r.lms ? " rev-card-lms" : ""}${r.x ? " rev-card-xp" : ""}" data-rev="${r.x ? "X" : r.lms ? "L" : ""}${r.id}" ${revOpen.has(revKey(r)) ? "open" : ""}>
+      <summary>${r.x ? `<span class="ch-num mono">${r.id >= 1 && r.id <= 8 ? "D" + r.id : r.id ? "FIN" : "INTRO"}</span> <span class="ch-title">${esc(xpTitle(r, lang))}</span>`
+        : r.lms ? `<span class="ch-num mono">Last Mile</span> <span class="ch-title">${esc(domainName(r.id, "cissp"))}</span>`
         : `<span class="ch-num mono">CH${r.id}</span> <span class="ch-title">${esc(chTitle(c) || "")}</span>`}</summary>
       <div class="rev-body">
         <div class="rev-tools">
@@ -2153,7 +2166,12 @@ function renderRevision() {
       </div>
     </details>`;
   };
-  const blocks = DOMAIN_IDS.map(d => {
+  const xpBlock = `<section class="domain domain-xp" data-revdom="X"><div class="domain-head"><h2><span class="mono accent">⏱</span> ${esc(t("xp.title"))}</h2>
+        <div class="row rev-speak">${speakBtns("data-domspeak", "Écouter toute la révision express, environ 2 h (cliquer à nouveau pour arrêter)", "Listen to the whole express review, about 2 h (click again to stop)")
+          .replace(/🔊 Lire</, "🔊 " + esc(t("xp.readAll", {}, "fr")) + "<").replace(/🔊 Listen</, "🔊 " + esc(t("xp.readAll", {}, "en")) + "<")}</div></div>
+      <p class="muted">${esc(t("xp.sub"))}</p>
+      <div class="rev-grid">${XP.map(card).join("")}</div></section>`;
+  const blocks = xpBlock + DOMAIN_IDS.map(d => {
     const rs = [...LMS.filter(r => r.id === d), ...REVISION.filter(r => (chById(r.id) || {}).domain === d)];
     if (!rs.length) return "";
     return `<section class="domain" data-revdom="${d}"><div class="domain-head"><h2><span class="mono accent">D${d}</span> ${esc(domainName(d, "cissp"))}</h2>
@@ -2184,7 +2202,7 @@ function renderRevision() {
   app.querySelectorAll(".rev-card").forEach(cardEst);
   app.querySelectorAll("[data-revdom]").forEach(sect => {
     const rs = [...sect.querySelectorAll(".rev-card")].map(itemOf);
-    sect.querySelectorAll("[data-domspeak]").forEach(b => setReadEst(b, textSize(rs.flatMap(r => revLines(r, "all", b.dataset.domspeak)))));
+    sect.querySelectorAll("[data-domspeak]").forEach(b => setReadEst(b, textSize(rs.flatMap(r => revLines(r, r.x ? "audio" : "all", b.dataset.domspeak)))));
   });
   const boxParts = d => [...d.querySelectorAll(".rev-pane h3, .rev-pane h4, .rev-pane p, .rev-pane li")].map(el => el.matches("h3[data-say]") ? { el, say: el.dataset.say } : { el });
   app.querySelectorAll(".rev-card").forEach(d => {
@@ -2211,7 +2229,7 @@ function renderRevision() {
   // « Lire tout le domaine » : chaque fiche du domaine est ouverte sur « Tout », puis tout est lu à la suite (avec surlignage).
   app.querySelectorAll("[data-domspeak]").forEach(b => b.onclick = e => {
     e.preventDefault();
-    const sect = b.closest("[data-revdom]"), dom = +sect.dataset.revdom, l = b.dataset.domspeak, k = `revision:D${dom}:${l}`;
+    const sect = b.closest("[data-revdom]"), dom = sect.dataset.revdom, l = b.dataset.domspeak, k = `revision:D${dom}:${l}`;
     const cards = [...sect.querySelectorAll(".rev-card")], parts = [];
     // télé connectée : tout le domaine est lu sur la télé seulement (rien sur le téléphone)
     if (tv && tv.ok) { stopSpeak(); tvDomain(sec, dom, cards.map(itemOf), l); tvSpeak("sheet"); return; }
@@ -2219,10 +2237,11 @@ function renderRevision() {
     stopSpeak();
     for (const d of cards) {
       const r = itemOf(d);
-      d.open = true; setPane(d, r, "all", l);
-      parts.push(...revIntro(d, r, "all", l), ...boxParts(d));
+      const p = r.x ? "audio" : "all";
+      d.open = true; setPane(d, r, p, l);
+      parts.push(...revIntro(d, r, p, l), ...boxParts(d));
     }
-    const restore = l !== getLang() ? () => cards.forEach(d => { if (d.isConnected) setPane(d, itemOf(d), "all"); }) : null;
+    const restore = l !== getLang() ? () => cards.forEach(d => { if (d.isConnected) { const r = itemOf(d); setPane(d, r, r.x ? "audio" : "all"); } }) : null;
     speakUnits(k, speechUnits(parts, l), l, b, restore);
   });
   const all = open => () => app.querySelectorAll(".rev-card").forEach(d => { d.open = open; });

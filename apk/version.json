@@ -1,7 +1,7 @@
 {
- "versionCode": 104,
- "versionName": "12.0",
+ "versionCode": 105,
+ "versionName": "12.1",
  "apk": "cissp-training.apk",
- "notes_fr": "Lecture en mode paysage : le texte des chapitres et des fiches s'adapte à la largeur de l'écran, en-tête et barre de lecture compacts.",
- "notes": "Landscape reading: chapter and sheet text now fits the screen width, compact header and reading bar."
+ "notes_fr": "Nouvel onglet Révision express 2 h : révision audio de dernière minute de tout le CISSP, en français et en anglais (en tête de Révision CISSP et en voiture).",
+ "notes": "New Express review 2 h: last-minute audio review of the whole CISSP, in English and French (top of CISSP Review and in the car)."
 }

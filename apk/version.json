@@ -1,7 +1,7 @@
 {
- "versionCode": 106,
- "versionName": "12.2",
+ "versionCode": 107,
+ "versionName": "12.3",
  "apk": "cissp-training.apk",
- "notes_fr": "Révision express 2 h : en français, les termes techniques sont gardés en anglais (due diligence, data owner, least privilege…).",
- "notes": "Express review 2 h: the French version now keeps technical terms in English."
+ "notes_fr": "Correctif : les nouveaux chapitres CEH de la base partagée ne s'affichent plus dans l'appli CISSP.",
+ "notes": "Fix: the new CEH chapters of the shared database no longer appear in the CISSP app."
 }

@@ -220,8 +220,8 @@ export class SupabaseStore {
   async _loadContent() {
     const [ch, qs] = await Promise.all([
       // Sans les chapitres CCSP (201-399, site https://hamzabenazouz.github.io/ccsp/).
-      this.sb.from("chapters").select("*").or("id.lte.200,id.gte.400").order("id"),
-      fetchAll(() => this.sb.from("questions").select("*").or("chapter_id.lte.200,chapter_id.gte.400").order("chapter_id").order("number")),
+      this.sb.from("chapters").select("*").or("id.lte.200,and(id.gte.400,id.lt.600)").order("id"),
+      fetchAll(() => this.sb.from("questions").select("*").or("chapter_id.lte.200,and(chapter_id.gte.400,chapter_id.lt.600)").order("chapter_id").order("number")),
     ]);
     if (ch.error) throw ch.error;
     // Sections « Summary » et « Study Essentials » du livre (table cissp_book_notes, facultative).

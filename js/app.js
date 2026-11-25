@@ -24,7 +24,7 @@ const DOMAIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
    Le CCSP (chapitres 201-210 et 301-308, même base Supabase) a son propre site : https://hamzabenazouz.github.io/ccsp/ */
 const SECTIONS = ["guide", "practice", "lastmile", "isc2", "lmsum", "revision", "book", "improve", "search"];
 /** Chapitres de ce site (les chapitres CCSP 201-399 sont ignorés). */
-const isOwnChapter = id => id <= 200 || id >= 400;
+const isOwnChapter = id => id <= 200 || (id >= 400 && id < 600);   // 201-399 CCSP, 600+ CEH
 
 const app = document.getElementById("app");
 const state = {
@@ -910,7 +910,7 @@ function errorPanel(title, msg, hint) {
 }
 
 // Numéro de version affiché discrètement à côté du logo (même numéro que l'APK : à changer à chaque version).
-const APP_VERSION = "12.2";
+const APP_VERSION = "12.3";
 function renderVersion() {
   if (document.getElementById("app-ver")) return;
   const brand = document.querySelector(".brand"); if (!brand) return;
